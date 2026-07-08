@@ -38,7 +38,7 @@ class ValidoGeneratorTest {
         assertEquals(1, model.capabilities().size());
         assertEquals(5, model.routes().size());
         assertEquals(5, result.report().routeCount());
-        assertEquals(1, result.report().exporterCount());
+        assertEquals(2, result.report().exporterCount());
         assertEquals(
                 java.util.Set.of(
                         "/en/",
@@ -60,14 +60,16 @@ class ValidoGeneratorTest {
                         && route.outputFile().toString().equals(peselOutput)
                         && route.canonicalUrl().equals("https://validohub.example/en/poland/pesel-validator/")));
         assertEquals(2, model.relatedLinks().size());
-        assertEquals(List.of(new ExporterId("html")), model.exportPlan().exporters());
+        assertEquals(List.of(new ExporterId("html"), new ExporterId("api-metadata")), model.exportPlan().exporters());
         assertEquals(tempDir.resolve(Path.of("generated", "validohub")), model.exportPlan().targetDirectories().get(new ExporterId("html")));
+        assertEquals(tempDir.resolve(Path.of("generated", "validohub")), model.exportPlan().targetDirectories().get(new ExporterId("api-metadata")));
         List<String> plannedArtifacts = model.exportPlan().generatedArtifacts().stream().map(Path::toString).toList();
-        assertEquals(model.routes().size() + 3, plannedArtifacts.size());
+        assertEquals(model.routes().size() + 4, plannedArtifacts.size());
         assertTrue(plannedArtifacts.containsAll(model.routes().stream().map(route -> route.outputFile().toString()).toList()));
         assertTrue(plannedArtifacts.contains(tempDir.resolve(Path.of("generated", "validohub", "sitemap.xml")).toString()));
         assertTrue(plannedArtifacts.contains(tempDir.resolve(Path.of("generated", "validohub", "robots.txt")).toString()));
         assertTrue(plannedArtifacts.contains(tempDir.resolve(Path.of("generated", "validohub", "search-index.json")).toString()));
+        assertTrue(plannedArtifacts.contains(tempDir.resolve(Path.of("generated", "validohub", "api-metadata.json")).toString()));
         assertTrue(model.exportPlan().reportPaths().isEmpty());
     }
 

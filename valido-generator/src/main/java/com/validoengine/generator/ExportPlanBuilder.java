@@ -14,6 +14,7 @@ import java.util.Objects;
 
 public final class ExportPlanBuilder {
     public static final ExporterId HTML_EXPORTER_ID = new ExporterId("html");
+    public static final ExporterId API_METADATA_EXPORTER_ID = new ExporterId("api-metadata");
 
     public ExportPlan buildHtmlPlan(ContentProject contentProject, List<RouteModel> routes) {
         Objects.requireNonNull(contentProject, "contentProject");
@@ -27,9 +28,13 @@ public final class ExportPlanBuilder {
         plannedArtifacts.add(targetDirectory.resolve("sitemap.xml"));
         plannedArtifacts.add(targetDirectory.resolve("robots.txt"));
         plannedArtifacts.add(targetDirectory.resolve("search-index.json"));
+        plannedArtifacts.add(targetDirectory.resolve("api-metadata.json"));
         return new ExportPlan(
-                List.of(HTML_EXPORTER_ID),
-                Map.of(HTML_EXPORTER_ID, targetDirectory),
+                List.of(HTML_EXPORTER_ID, API_METADATA_EXPORTER_ID),
+                Map.of(
+                        HTML_EXPORTER_ID, targetDirectory,
+                        API_METADATA_EXPORTER_ID, targetDirectory
+                ),
                 plannedArtifacts.stream().distinct().sorted(Comparator.comparing(Path::toString)).toList(),
                 Map.of()
         );

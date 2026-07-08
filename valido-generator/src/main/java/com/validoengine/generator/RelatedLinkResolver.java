@@ -39,6 +39,7 @@ public final class RelatedLinkResolver {
                 projectModel.locales(),
                 projectModel.content(),
                 projectModel.algorithmBindings(),
+                projectModel.algorithmMetadata(),
                 projectModel.routes(),
                 tools.stream().flatMap(tool -> tool.relatedLinks().stream()).toList(),
                 projectModel.capabilities(),

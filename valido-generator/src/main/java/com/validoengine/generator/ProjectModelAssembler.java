@@ -2,7 +2,9 @@ package com.validoengine.generator;
 
 import com.validoengine.content.model.ContentProject;
 import com.validoengine.core.capability.CapabilityModel;
+import com.validoengine.core.model.AlgorithmId;
 import com.validoengine.core.model.AlgorithmBindingModel;
+import com.validoengine.core.algorithm.AlgorithmMetadata;
 import com.validoengine.core.model.ContentBlockModel;
 import com.validoengine.core.model.ExportPlan;
 import com.validoengine.core.model.LocaleCode;
@@ -30,6 +32,8 @@ public final class ProjectModelAssembler {
         exportPlan = exportPlan == null ? ExportPlan.empty() : exportPlan;
         Map<ToolId, AlgorithmBindingModel> algorithmBindings = contentProject.tools().stream()
                 .collect(Collectors.toUnmodifiableMap(ToolModel::id, ToolModel::algorithmBinding));
+        Map<AlgorithmId, AlgorithmMetadata> algorithmMetadata = contentProject.algorithmRegistry().all().stream()
+                .collect(Collectors.toUnmodifiableMap(entry -> entry.algorithmId(), entry -> entry.toMetadata()));
         return new ProjectModel(
                 contentProject.site(),
                 contentProject.tools(),
@@ -38,6 +42,7 @@ public final class ProjectModelAssembler {
                 locales(contentProject),
                 contentProject.content(),
                 algorithmBindings,
+                algorithmMetadata,
                 routes,
                 List.of(),
                 capabilities(contentProject),
