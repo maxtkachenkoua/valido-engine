@@ -49,6 +49,12 @@ class HtmlExporterTest {
         assertTrue(toolHtml.contains("class=\"breadcrumbs\""));
         assertTrue(toolHtml.contains("class=\"site-footer\""));
         assertTrue(toolHtml.contains("position: sticky"));
+        assertTrue(toolHtml.contains("class=\"workbench-card\""));
+        assertTrue(toolHtml.contains("data-algorithm-id=\"validohub.base64\""));
+        assertTrue(toolHtml.contains("data-action=\"encode\""));
+        assertTrue(toolHtml.contains("Copy result"));
+        assertTrue(toolHtml.contains("TextEncoder"));
+        assertTrue(toolHtml.contains("Enter text to encode."));
         assertTrue(toolHtml.contains("Base64 represents binary data as ASCII text."));
         assertTrue(toolHtml.contains("<p>Base64 represents binary data as ASCII text."));
 

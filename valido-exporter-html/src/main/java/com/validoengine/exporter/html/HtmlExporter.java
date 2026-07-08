@@ -1,11 +1,16 @@
 package com.validoengine.exporter.html;
 
+import com.validoengine.core.capability.CapabilityId;
 import com.validoengine.core.model.CategoryId;
 import com.validoengine.core.model.CategoryModel;
 import com.validoengine.core.model.ContentBlockModel;
 import com.validoengine.core.model.CountryCode;
 import com.validoengine.core.model.CountryModel;
 import com.validoengine.core.model.ExporterId;
+import com.validoengine.core.model.FormInputModel;
+import com.validoengine.core.model.FormInputType;
+import com.validoengine.core.model.FormModel;
+import com.validoengine.core.model.InputOptionModel;
 import com.validoengine.core.model.LocaleCode;
 import com.validoengine.core.model.LocalizedText;
 import com.validoengine.core.model.ProjectModel;
@@ -40,6 +45,7 @@ public final class HtmlExporter {
     private static final String PAGE_TEMPLATE = "valido/page";
     private static final Pattern ORDERED_LIST = Pattern.compile("\\d+\\.\\s+.+");
     private static final String STYLESHEET = readResource("valido/static/styles.css");
+    private static final String CLIENT_SCRIPT = readResource("valido/static/tool-workbench.js");
 
     private final TemplateEngine templateEngine;
 
@@ -85,12 +91,14 @@ public final class HtmlExporter {
         variables.put("canonical", route.canonicalUrl());
         variables.put("hreflang", hreflang(projectModel, route));
         variables.put("stylesheet", STYLESHEET);
+        variables.put("clientScript", CLIENT_SCRIPT);
         variables.put("navigation", navigation(projectModel, route.locale()));
         variables.put("breadcrumbs", breadcrumbs(projectModel, route, page.heading()));
         variables.put("heading", page.heading());
         variables.put("summary", page.summary());
         variables.put("links", page.links());
         variables.put("sections", page.sections());
+        variables.put("forms", page.forms());
         context.setVariables(variables);
         String html = templateEngine.process(PAGE_TEMPLATE, context);
         try {
@@ -133,6 +141,7 @@ public final class HtmlExporter {
                 siteName,
                 seoDescription(projectModel.site().seo().description(), route.locale(), projectModel.site().defaultLocale(), ""),
                 links,
+                List.of(),
                 List.of()
         );
     }
@@ -157,6 +166,7 @@ public final class HtmlExporter {
                 fallbackTitle,
                 fallbackDescription,
                 links,
+                toolForms(tool, route.locale(), projectModel.site().defaultLocale()),
                 sections
         );
     }
@@ -179,6 +189,7 @@ public final class HtmlExporter {
                 fallbackTitle,
                 fallbackDescription,
                 links,
+                List.of(),
                 List.of()
         );
     }
@@ -200,8 +211,76 @@ public final class HtmlExporter {
                 title,
                 "Tools for " + title + ".",
                 links,
+                List.of(),
                 List.of()
         );
+    }
+
+    private static List<FormView> toolForms(ToolModel tool, LocaleCode locale, LocaleCode fallback) {
+        return tool.forms().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> formView(tool, entry.getKey(), entry.getValue(), locale, fallback))
+                .toList();
+    }
+
+    private static FormView formView(ToolModel tool, CapabilityId capability, FormModel form, LocaleCode locale, LocaleCode fallback) {
+        List<ActionView> actions = form.actions().stream()
+                .map(action -> new ActionView(action.value(), actionLabel(action.value())))
+                .toList();
+        return new FormView(
+                formId(tool.id().value(), capability.value()),
+                capability.value(),
+                capabilityLabel(capability.value()),
+                tool.algorithmBinding().algorithmId().value(),
+                actions,
+                form.inputs().stream()
+                        .map(input -> inputView(input, locale, fallback))
+                        .toList()
+        );
+    }
+
+    private static InputView inputView(FormInputModel input, LocaleCode locale, LocaleCode fallback) {
+        return new InputView(
+                input.name(),
+                htmlInputType(input.type()),
+                input.type() == FormInputType.TEXTAREA,
+                input.type() == FormInputType.CHECKBOX,
+                input.type() == FormInputType.SELECT,
+                input.label().resolve(locale, fallback).isBlank() ? input.name() : input.label().resolve(locale, fallback),
+                input.required(),
+                input.defaultValue() == null ? "" : String.valueOf(input.defaultValue()),
+                input.placeholder().resolve(locale, fallback),
+                input.help().resolve(locale, fallback),
+                input.options().stream()
+                        .map(option -> optionView(option, locale, fallback))
+                        .toList()
+        );
+    }
+
+    private static OptionView optionView(InputOptionModel option, LocaleCode locale, LocaleCode fallback) {
+        String label = option.label().resolve(locale, fallback);
+        return new OptionView(option.value(), label.isBlank() ? option.value() : label);
+    }
+
+    private static String htmlInputType(FormInputType type) {
+        return switch (type) {
+            case NUMBER -> "number";
+            case CHECKBOX -> "checkbox";
+            default -> "text";
+        };
+    }
+
+    private static String formId(String toolId, String capability) {
+        return "tool-" + toolId + "-" + capability;
+    }
+
+    private static String capabilityLabel(String value) {
+        return actionLabel(value);
+    }
+
+    private static String actionLabel(String value) {
+        String text = value.replace("-", " ");
+        return Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }
 
     private static void validatePlan(ProjectModel projectModel) {
@@ -528,6 +607,7 @@ public final class HtmlExporter {
             String heading,
             String summary,
             List<LinkView> links,
+            List<FormView> forms,
             List<SectionView> sections
     ) {
     }
@@ -544,13 +624,47 @@ public final class HtmlExporter {
     public record HreflangView(String locale, String href) {
     }
 
+    public record FormView(
+            String id,
+            String capability,
+            String title,
+            String algorithmId,
+            List<ActionView> actions,
+            List<InputView> inputs
+    ) {
+    }
+
+    public record ActionView(String action, String label) {
+    }
+
+    public record InputView(
+            String name,
+            String type,
+            boolean textarea,
+            boolean checkbox,
+            boolean select,
+            String label,
+            boolean required,
+            String defaultValue,
+            String placeholder,
+            String help,
+            List<OptionView> options
+    ) {
+    }
+
+    public record OptionView(String value, String label) {
+    }
+
     private static final class MarkdownRenderer {
         private final List<String> lines;
         private final StringBuilder html = new StringBuilder();
         private int index;
 
         private MarkdownRenderer(String markdown) {
-            this.lines = markdown.replace("\r\n", "\n").replace('\r', '\n').lines().toList();
+            List<String> normalized = markdown.replace("\r\n", "\n").replace('\r', '\n').lines().toList();
+            this.lines = normalized.isEmpty() || !"--".equals(normalized.get(0).trim())
+                    ? normalized
+                    : normalized.subList(1, normalized.size());
         }
 
         private String render() {
