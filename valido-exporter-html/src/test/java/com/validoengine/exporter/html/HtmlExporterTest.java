@@ -69,6 +69,9 @@ class HtmlExporterTest {
         assertTrue(toolHtml.contains("data-file-dropzone"));
         assertTrue(toolHtml.contains("data-tool-preview"));
         assertTrue(toolHtml.contains("data-tool-advanced"));
+        assertTrue(toolHtml.contains("ValidoWorkbench"));
+        assertTrue(toolHtml.contains("registerPlugin"));
+        assertTrue(toolHtml.contains("Base64Plugin"));
         assertTrue(toolHtml.contains("TextEncoder"));
         assertTrue(toolHtml.contains("TextDecoder"));
         assertTrue(toolHtml.contains("Enter text to encode."));
