@@ -62,15 +62,12 @@ class ValidoGeneratorTest {
         assertEquals(2, model.relatedLinks().size());
         assertEquals(List.of(new ExporterId("html")), model.exportPlan().exporters());
         assertEquals(Path.of("generated", "validohub"), model.exportPlan().targetDirectories().get(new ExporterId("html")));
-        assertEquals(
-                model.routes().stream()
-                        .map(route -> route.outputFile().toString())
-                        .sorted()
-                        .toList(),
-                model.exportPlan().generatedArtifacts().stream()
-                        .map(Path::toString)
-                        .toList()
-        );
+        List<String> plannedArtifacts = model.exportPlan().generatedArtifacts().stream().map(Path::toString).toList();
+        assertEquals(model.routes().size() + 3, plannedArtifacts.size());
+        assertTrue(plannedArtifacts.containsAll(model.routes().stream().map(route -> route.outputFile().toString()).toList()));
+        assertTrue(plannedArtifacts.contains(Path.of("generated", "validohub", "sitemap.xml").toString()));
+        assertTrue(plannedArtifacts.contains(Path.of("generated", "validohub", "robots.txt").toString()));
+        assertTrue(plannedArtifacts.contains(Path.of("generated", "validohub", "search-index.json").toString()));
         assertTrue(model.exportPlan().reportPaths().isEmpty());
     }
 

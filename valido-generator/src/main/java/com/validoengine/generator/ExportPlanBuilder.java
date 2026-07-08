@@ -6,6 +6,7 @@ import com.validoengine.core.model.ExporterId;
 import com.validoengine.core.model.RouteModel;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -17,15 +18,18 @@ public final class ExportPlanBuilder {
     public ExportPlan buildHtmlPlan(ContentProject contentProject, List<RouteModel> routes) {
         Objects.requireNonNull(contentProject, "contentProject");
         routes = routes == null ? List.of() : List.copyOf(routes);
-        List<Path> plannedArtifacts = routes.stream()
+        List<Path> plannedArtifacts = new ArrayList<>(routes.stream()
                 .map(RouteModel::outputFile)
                 .distinct()
                 .sorted(Comparator.comparing(Path::toString))
-                .toList();
+                .toList());
+        plannedArtifacts.add(contentProject.site().outputDirectory().resolve("sitemap.xml"));
+        plannedArtifacts.add(contentProject.site().outputDirectory().resolve("robots.txt"));
+        plannedArtifacts.add(contentProject.site().outputDirectory().resolve("search-index.json"));
         return new ExportPlan(
                 List.of(HTML_EXPORTER_ID),
                 Map.of(HTML_EXPORTER_ID, contentProject.site().outputDirectory()),
-                plannedArtifacts,
+                plannedArtifacts.stream().distinct().sorted(Comparator.comparing(Path::toString)).toList(),
                 Map.of()
         );
     }

@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.util.Comparator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HtmlExporterTest {
@@ -29,11 +28,14 @@ class HtmlExporterTest {
 
         HtmlExportResult result = new HtmlExporter().export(projectModel);
 
-        assertEquals(projectModel.routes().size(), result.writtenFiles().size());
+        assertEquals(projectModel.routes().size() + 3, result.writtenFiles().size());
         assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "en", "index.html")));
         assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "en", "tools", "base64-encoder", "index.html")));
         assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "en", "categories", "encoding", "index.html")));
         assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "en", "poland", "index.html")));
+        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "sitemap.xml")));
+        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "robots.txt")));
+        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "search-index.json")));
 
         String toolHtml = Files.readString(Path.of("target", "html-exporter-test", "en", "tools", "base64-encoder", "index.html"));
         assertTrue(toolHtml.contains("<title>Base64 Encoder, Decoder, and Validator</title>"));
@@ -41,9 +43,19 @@ class HtmlExporterTest {
         assertTrue(toolHtml.contains("rel=\"canonical\" href=\"https://validohub.example/en/tools/base64-encoder/\""));
         assertTrue(toolHtml.contains("rel=\"alternate\" hreflang=\"en\" href=\"https://validohub.example/en/tools/base64-encoder/\""));
         assertTrue(toolHtml.contains("Base64 represents binary data as ASCII text."));
-        assertFalse(Files.exists(Path.of("target", "html-exporter-test", "sitemap.xml")));
-        assertFalse(Files.exists(Path.of("target", "html-exporter-test", "robots.txt")));
-        assertFalse(Files.exists(Path.of("target", "html-exporter-test", "search-index.json")));
+
+        String sitemap = Files.readString(Path.of("target", "html-exporter-test", "sitemap.xml"));
+        assertTrue(sitemap.contains("<loc>https://validohub.example/en/tools/base64-encoder/</loc>"));
+        assertTrue(sitemap.contains("<loc>https://validohub.example/en/poland/</loc>"));
+
+        String robots = Files.readString(Path.of("target", "html-exporter-test", "robots.txt"));
+        assertTrue(robots.contains("User-agent: *"));
+        assertTrue(robots.contains("Sitemap: https://validohub.example/sitemap.xml"));
+
+        String searchIndex = Files.readString(Path.of("target", "html-exporter-test", "search-index.json"));
+        assertTrue(searchIndex.contains("\"toolId\": \"base64-encoder\""));
+        assertTrue(searchIndex.contains("\"title\": \"Base64 Toolkit\""));
+        assertTrue(searchIndex.contains("\"route\": \"/en/tools/base64-encoder/\""));
     }
 
     private Path copyExamplesToTempProject() throws IOException {

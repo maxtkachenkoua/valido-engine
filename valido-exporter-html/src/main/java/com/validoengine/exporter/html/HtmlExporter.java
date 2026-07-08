@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -85,7 +86,8 @@ public final class HtmlExporter {
         List<Path> writtenFiles = projectModel.routes().stream()
                 .sorted(Comparator.comparing(RouteModel::path))
                 .map(route -> writeRoute(projectModel, route, toolsById, categoriesById, countriesByCode))
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
+        writtenFiles.addAll(writeStaticArtifacts(projectModel, toolsById));
         return new HtmlExportResult(writtenFiles);
     }
 
@@ -219,6 +221,10 @@ public final class HtmlExporter {
         if (!projectModel.exportPlan().exporters().contains(HTML_EXPORTER_ID)) {
             throw new IllegalArgumentException("ProjectModel ExportPlan does not include html exporter.");
         }
+        Path targetDirectory = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID);
+        if (targetDirectory == null) {
+            throw new IllegalArgumentException("ProjectModel ExportPlan does not include html target directory.");
+        }
         Set<Path> plannedArtifacts = Set.copyOf(projectModel.exportPlan().generatedArtifacts());
         List<Path> missing = projectModel.routes().stream()
                 .map(RouteModel::outputFile)
@@ -227,6 +233,117 @@ public final class HtmlExporter {
         if (!missing.isEmpty()) {
             throw new IllegalArgumentException("ProjectModel ExportPlan is missing HTML route artifacts: " + missing);
         }
+        List<Path> missingStaticArtifacts = staticArtifactPaths(projectModel).stream()
+                .filter(Predicate.not(plannedArtifacts::contains))
+                .toList();
+        if (!missingStaticArtifacts.isEmpty()) {
+            throw new IllegalArgumentException("ProjectModel ExportPlan is missing static artifacts: " + missingStaticArtifacts);
+        }
+    }
+
+    private static List<Path> writeStaticArtifacts(ProjectModel projectModel, Map<ToolId, ToolModel> toolsById) {
+        Path targetDirectory = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID);
+        return List.of(
+                writeFile(targetDirectory.resolve("sitemap.xml"), sitemap(projectModel)),
+                writeFile(targetDirectory.resolve("robots.txt"), robots(projectModel)),
+                writeFile(targetDirectory.resolve("search-index.json"), searchIndex(projectModel, toolsById))
+        );
+    }
+
+    private static List<Path> staticArtifactPaths(ProjectModel projectModel) {
+        Path targetDirectory = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID);
+        return List.of(
+                targetDirectory.resolve("sitemap.xml"),
+                targetDirectory.resolve("robots.txt"),
+                targetDirectory.resolve("search-index.json")
+        );
+    }
+
+    private static Path writeFile(Path path, String content) {
+        try {
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, content);
+            return path;
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Failed to write static artifact " + path, exception);
+        }
+    }
+
+    private static String sitemap(ProjectModel projectModel) {
+        String urls = projectModel.routes().stream()
+                .sorted(Comparator.comparing(RouteModel::canonicalUrl))
+                .map(route -> "  <url><loc>" + xml(route.canonicalUrl()) + "</loc></url>")
+                .collect(Collectors.joining("\n"));
+        return """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                %s
+                </urlset>
+                """.formatted(urls);
+    }
+
+    private static String robots(ProjectModel projectModel) {
+        String baseUrl = normalizedBaseUrl(projectModel.site().baseUrl());
+        return """
+                User-agent: *
+                Allow: /
+                Sitemap: %s/sitemap.xml
+                """.formatted(baseUrl);
+    }
+
+    private static String searchIndex(ProjectModel projectModel, Map<ToolId, ToolModel> toolsById) {
+        LocaleCode locale = projectModel.site().defaultLocale();
+        String tools = projectModel.routes().stream()
+                .filter(route -> route.pageType() == RouteType.TOOL)
+                .filter(route -> route.locale().equals(locale))
+                .sorted(Comparator.comparing(route -> titleFor(projectModel, route, locale), String.CASE_INSENSITIVE_ORDER))
+                .map(route -> searchEntry(projectModel, toolsById.get(new ToolId(route.sourceAggregateId())), route, locale))
+                .collect(Collectors.joining(",\n"));
+        return """
+                {
+                  "tools": [
+                %s
+                  ]
+                }
+                """.formatted(tools.isBlank() ? "" : tools.indent(4).stripTrailing());
+    }
+
+    private static String searchEntry(ProjectModel projectModel, ToolModel tool, RouteModel route, LocaleCode locale) {
+        String country = tool.optionalCountry().map(CountryCode::value).orElse(null);
+        List<String> labels = tool.forms().values().stream()
+                .flatMap(form -> form.inputs().stream())
+                .map(input -> input.label().resolve(locale, projectModel.site().defaultLocale()))
+                .filter(label -> !label.isBlank())
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+        List<String> capabilities = tool.capabilities().stream()
+                .sorted()
+                .map(capability -> capability.value())
+                .toList();
+        List<String> aliases = tool.aliases().getOrEmpty(locale);
+        return """
+                {
+                  "toolId": %s,
+                  "title": %s,
+                  "summary": %s,
+                  "country": %s,
+                  "category": %s,
+                  "capabilities": %s,
+                  "aliases": %s,
+                  "localizedLabels": %s,
+                  "route": %s
+                }""".formatted(
+                json(tool.id().value()),
+                json(tool.name().resolve(locale, projectModel.site().defaultLocale())),
+                json(tool.summary().resolve(locale, projectModel.site().defaultLocale())),
+                country == null ? "null" : json(country),
+                json(tool.category().value()),
+                jsonArray(capabilities),
+                jsonArray(aliases),
+                jsonArray(labels),
+                json(route.path())
+        );
     }
 
     private static Predicate<RouteModel> publicListingRoute() {
@@ -284,6 +401,49 @@ public final class HtmlExporter {
     private static String sectionTitle(ContentBlockModel block, LocaleCode locale, LocaleCode fallback) {
         String title = block.title().resolve(locale, fallback);
         return title.isBlank() ? block.block().id() : title;
+    }
+
+    private static String normalizedBaseUrl(String baseUrl) {
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private static String xml(String value) {
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
+    }
+
+    private static String jsonArray(List<String> values) {
+        return values.stream()
+                .map(HtmlExporter::json)
+                .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    private static String json(String value) {
+        StringBuilder escaped = new StringBuilder("\"");
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            switch (character) {
+                case '"' -> escaped.append("\\\"");
+                case '\\' -> escaped.append("\\\\");
+                case '\b' -> escaped.append("\\b");
+                case '\f' -> escaped.append("\\f");
+                case '\n' -> escaped.append("\\n");
+                case '\r' -> escaped.append("\\r");
+                case '\t' -> escaped.append("\\t");
+                default -> {
+                    if (character < 0x20) {
+                        escaped.append(String.format("\\u%04x", (int) character));
+                    } else {
+                        escaped.append(character);
+                    }
+                }
+            }
+        }
+        return escaped.append('"').toString();
     }
 
     private static <T> T require(T value, RouteModel route) {
