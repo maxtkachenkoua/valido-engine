@@ -9,6 +9,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -41,11 +42,21 @@ class EngineCliTest {
     }
 
     @Test
-    void publishReturnsPhaseOneNotImplemented() {
-        CliRun run = run("engine", "publish");
+    void publishGeneratesStaticSiteFromExamples() throws IOException {
+        Path examples = copyExamplesToTempProject();
 
-        assertEquals(EngineExitCode.VALIDATION_OR_GENERATION_ERROR, run.exitCode());
-        assertTrue(run.stdout().contains("engine publish is not implemented in Phase 1."));
+        CliRun run = run("engine", "publish", "--site", examples.resolve("site.yaml").toString());
+
+        Path output = examples.resolve(Path.of("generated", "validohub"));
+        assertEquals(EngineExitCode.SUCCESS, run.exitCode());
+        assertTrue(run.stdout().contains("Valido Engine publish"));
+        assertTrue(run.stdout().contains("writtenArtifacts:"));
+        assertTrue(Files.isRegularFile(output.resolve(Path.of("en", "index.html"))));
+        assertTrue(Files.isRegularFile(output.resolve(Path.of("en", "tools", "base64-encoder", "index.html"))));
+        assertTrue(Files.isRegularFile(output.resolve("sitemap.xml")));
+        assertTrue(Files.isRegularFile(output.resolve("robots.txt")));
+        assertTrue(Files.isRegularFile(output.resolve("search-index.json")));
+        assertTrue(Files.notExists(output.resolve("api-metadata.json")));
     }
 
     @Test
@@ -130,6 +141,32 @@ class EngineCliTest {
     private static void write(Path path, String content) throws IOException {
         Files.createDirectories(path.getParent());
         Files.writeString(path, content);
+    }
+
+    private Path copyExamplesToTempProject() throws IOException {
+        Path source = examplesRoot();
+        Path target = tempDir.resolve("examples");
+        try (var paths = Files.walk(source)) {
+            for (Path path : paths.sorted(Comparator.naturalOrder()).toList()) {
+                Path relative = source.relativize(path);
+                Path destination = target.resolve(relative);
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(destination);
+                } else {
+                    Files.createDirectories(destination.getParent());
+                    Files.copy(path, destination);
+                }
+            }
+        }
+        return target;
+    }
+
+    private static Path examplesRoot() {
+        Path moduleRelative = Path.of("..", "valido-examples", "src", "main", "resources").toAbsolutePath().normalize();
+        if (Files.isDirectory(moduleRelative)) {
+            return moduleRelative;
+        }
+        return Path.of("valido-examples", "src", "main", "resources").toAbsolutePath().normalize();
     }
 
     private record CliRun(int exitCode, String stdout, String stderr) {

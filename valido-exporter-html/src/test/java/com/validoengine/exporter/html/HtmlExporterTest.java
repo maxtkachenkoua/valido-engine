@@ -24,35 +24,36 @@ class HtmlExporterTest {
         var generation = new ValidoGenerator().generate(GenerationRequest.forProjectRoot(projectRoot));
         assertTrue(generation.successful(), () -> generation.report().validationReport().diagnostics().toString());
         var projectModel = generation.optionalProjectModel().orElseThrow();
-        deleteRecursively(Path.of("target", "html-exporter-test"));
+        Path outputDirectory = projectRoot.resolve(Path.of("target", "html-exporter-test"));
+        deleteRecursively(outputDirectory);
 
         HtmlExportResult result = new HtmlExporter().export(projectModel);
 
         assertEquals(projectModel.routes().size() + 3, result.writtenFiles().size());
-        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "en", "index.html")));
-        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "en", "tools", "base64-encoder", "index.html")));
-        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "en", "categories", "encoding", "index.html")));
-        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "en", "poland", "index.html")));
-        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "sitemap.xml")));
-        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "robots.txt")));
-        assertTrue(Files.isRegularFile(Path.of("target", "html-exporter-test", "search-index.json")));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "index.html"))));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "tools", "base64-encoder", "index.html"))));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "categories", "encoding", "index.html"))));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "poland", "index.html"))));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve("sitemap.xml")));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve("robots.txt")));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve("search-index.json")));
 
-        String toolHtml = Files.readString(Path.of("target", "html-exporter-test", "en", "tools", "base64-encoder", "index.html"));
+        String toolHtml = Files.readString(outputDirectory.resolve(Path.of("en", "tools", "base64-encoder", "index.html")));
         assertTrue(toolHtml.contains("<title>Base64 Encoder, Decoder, and Validator</title>"));
         assertTrue(toolHtml.contains("name=\"description\""));
         assertTrue(toolHtml.contains("rel=\"canonical\" href=\"https://validohub.example/en/tools/base64-encoder/\""));
         assertTrue(toolHtml.contains("rel=\"alternate\" hreflang=\"en\" href=\"https://validohub.example/en/tools/base64-encoder/\""));
         assertTrue(toolHtml.contains("Base64 represents binary data as ASCII text."));
 
-        String sitemap = Files.readString(Path.of("target", "html-exporter-test", "sitemap.xml"));
+        String sitemap = Files.readString(outputDirectory.resolve("sitemap.xml"));
         assertTrue(sitemap.contains("<loc>https://validohub.example/en/tools/base64-encoder/</loc>"));
         assertTrue(sitemap.contains("<loc>https://validohub.example/en/poland/</loc>"));
 
-        String robots = Files.readString(Path.of("target", "html-exporter-test", "robots.txt"));
+        String robots = Files.readString(outputDirectory.resolve("robots.txt"));
         assertTrue(robots.contains("User-agent: *"));
         assertTrue(robots.contains("Sitemap: https://validohub.example/sitemap.xml"));
 
-        String searchIndex = Files.readString(Path.of("target", "html-exporter-test", "search-index.json"));
+        String searchIndex = Files.readString(outputDirectory.resolve("search-index.json"));
         assertTrue(searchIndex.contains("\"toolId\": \"base64-encoder\""));
         assertTrue(searchIndex.contains("\"title\": \"Base64 Toolkit\""));
         assertTrue(searchIndex.contains("\"route\": \"/en/tools/base64-encoder/\""));

@@ -3,6 +3,8 @@ package com.validoengine.cli;
 import com.validoengine.generator.ValidoGenerator;
 import com.validoengine.generator.model.GenerationRequest;
 import com.validoengine.generator.model.GenerationResult;
+import com.validoengine.exporter.html.HtmlExportResult;
+import com.validoengine.exporter.html.HtmlExporter;
 
 import java.io.PrintStream;
 import java.nio.file.Path;
@@ -11,15 +13,17 @@ import java.util.Objects;
 public final class EngineCli {
     private final CliParser parser;
     private final ValidoGenerator generator;
+    private final HtmlExporter htmlExporter;
     private final CliOutput output;
 
     public EngineCli() {
-        this(new CliParser(), new ValidoGenerator(), new CliOutput());
+        this(new CliParser(), new ValidoGenerator(), new HtmlExporter(), new CliOutput());
     }
 
-    public EngineCli(CliParser parser, ValidoGenerator generator, CliOutput output) {
+    public EngineCli(CliParser parser, ValidoGenerator generator, HtmlExporter htmlExporter, CliOutput output) {
         this.parser = Objects.requireNonNull(parser, "parser");
         this.generator = Objects.requireNonNull(generator, "generator");
+        this.htmlExporter = Objects.requireNonNull(htmlExporter, "htmlExporter");
         this.output = Objects.requireNonNull(output, "output");
     }
 
@@ -45,12 +49,12 @@ public final class EngineCli {
             stdout.println("note: --mode is parsed in Phase 1 but generation uses site.yaml mode until generator overrides are implemented.");
         }
         if (options.optionalOutputOverride().isPresent()) {
-            stdout.println("note: --output is parsed in Phase 1 but no report files are written until later phases.");
+            stdout.println("note: --output is parsed but generation uses site.yaml output until generator overrides are implemented.");
         }
         return switch (options.command()) {
             case DOCTOR -> runDoctor(options, stdout);
             case STATS -> runStats(options, stdout);
-            case PUBLISH -> notImplemented("engine publish", stdout);
+            case PUBLISH -> runPublish(options, stdout);
             case BRAIN -> notImplemented("engine brain", stdout);
         };
     }
@@ -77,6 +81,25 @@ public final class EngineCli {
         return result.successful()
                 ? EngineExitCode.SUCCESS
                 : EngineExitCode.VALIDATION_OR_GENERATION_ERROR;
+    }
+
+    private int runPublish(CliOptions options, PrintStream stdout) {
+        GenerationResult result = generate(options);
+        if (!result.successful() || result.optionalProjectModel().isEmpty()) {
+            if (options.format() == OutputFormat.JSON) {
+                stdout.println(output.doctorJson(result));
+            } else {
+                stdout.print(output.doctorText(result));
+            }
+            return EngineExitCode.VALIDATION_OR_GENERATION_ERROR;
+        }
+        HtmlExportResult exportResult = htmlExporter.export(result.optionalProjectModel().orElseThrow());
+        if (options.format() == OutputFormat.JSON) {
+            stdout.println(output.publishJson(result, exportResult));
+        } else {
+            stdout.print(output.publishText(result, exportResult));
+        }
+        return EngineExitCode.SUCCESS;
     }
 
     private GenerationResult generate(CliOptions options) {

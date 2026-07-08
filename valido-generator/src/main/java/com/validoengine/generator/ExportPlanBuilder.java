@@ -18,17 +18,18 @@ public final class ExportPlanBuilder {
     public ExportPlan buildHtmlPlan(ContentProject contentProject, List<RouteModel> routes) {
         Objects.requireNonNull(contentProject, "contentProject");
         routes = routes == null ? List.of() : List.copyOf(routes);
+        Path targetDirectory = contentProject.projectRoot().resolve(contentProject.site().outputDirectory()).normalize();
         List<Path> plannedArtifacts = new ArrayList<>(routes.stream()
                 .map(RouteModel::outputFile)
                 .distinct()
                 .sorted(Comparator.comparing(Path::toString))
                 .toList());
-        plannedArtifacts.add(contentProject.site().outputDirectory().resolve("sitemap.xml"));
-        plannedArtifacts.add(contentProject.site().outputDirectory().resolve("robots.txt"));
-        plannedArtifacts.add(contentProject.site().outputDirectory().resolve("search-index.json"));
+        plannedArtifacts.add(targetDirectory.resolve("sitemap.xml"));
+        plannedArtifacts.add(targetDirectory.resolve("robots.txt"));
+        plannedArtifacts.add(targetDirectory.resolve("search-index.json"));
         return new ExportPlan(
                 List.of(HTML_EXPORTER_ID),
-                Map.of(HTML_EXPORTER_ID, contentProject.site().outputDirectory()),
+                Map.of(HTML_EXPORTER_ID, targetDirectory),
                 plannedArtifacts.stream().distinct().sorted(Comparator.comparing(Path::toString)).toList(),
                 Map.of()
         );

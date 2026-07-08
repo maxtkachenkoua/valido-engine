@@ -49,8 +49,8 @@ class ValidoGeneratorTest {
                 ),
                 model.routes().stream().map(route -> route.path()).collect(Collectors.toSet())
         );
-        String base64Output = Path.of("generated", "validohub", "en", "tools", "base64-encoder", "index.html").toString();
-        String peselOutput = Path.of("generated", "validohub", "en", "poland", "pesel-validator", "index.html").toString();
+        String base64Output = tempDir.resolve(Path.of("generated", "validohub", "en", "tools", "base64-encoder", "index.html")).toString();
+        String peselOutput = tempDir.resolve(Path.of("generated", "validohub", "en", "poland", "pesel-validator", "index.html")).toString();
         assertTrue(model.routes().stream().anyMatch(route ->
                 route.path().equals("/en/tools/base64-encoder/")
                         && route.outputFile().toString().equals(base64Output)
@@ -61,13 +61,13 @@ class ValidoGeneratorTest {
                         && route.canonicalUrl().equals("https://validohub.example/en/poland/pesel-validator/")));
         assertEquals(2, model.relatedLinks().size());
         assertEquals(List.of(new ExporterId("html")), model.exportPlan().exporters());
-        assertEquals(Path.of("generated", "validohub"), model.exportPlan().targetDirectories().get(new ExporterId("html")));
+        assertEquals(tempDir.resolve(Path.of("generated", "validohub")), model.exportPlan().targetDirectories().get(new ExporterId("html")));
         List<String> plannedArtifacts = model.exportPlan().generatedArtifacts().stream().map(Path::toString).toList();
         assertEquals(model.routes().size() + 3, plannedArtifacts.size());
         assertTrue(plannedArtifacts.containsAll(model.routes().stream().map(route -> route.outputFile().toString()).toList()));
-        assertTrue(plannedArtifacts.contains(Path.of("generated", "validohub", "sitemap.xml").toString()));
-        assertTrue(plannedArtifacts.contains(Path.of("generated", "validohub", "robots.txt").toString()));
-        assertTrue(plannedArtifacts.contains(Path.of("generated", "validohub", "search-index.json").toString()));
+        assertTrue(plannedArtifacts.contains(tempDir.resolve(Path.of("generated", "validohub", "sitemap.xml")).toString()));
+        assertTrue(plannedArtifacts.contains(tempDir.resolve(Path.of("generated", "validohub", "robots.txt")).toString()));
+        assertTrue(plannedArtifacts.contains(tempDir.resolve(Path.of("generated", "validohub", "search-index.json")).toString()));
         assertTrue(model.exportPlan().reportPaths().isEmpty());
     }
 

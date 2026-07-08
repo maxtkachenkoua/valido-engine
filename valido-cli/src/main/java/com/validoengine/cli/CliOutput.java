@@ -1,9 +1,11 @@
 package com.validoengine.cli;
 
 import com.validoengine.core.diagnostic.Diagnostic;
+import com.validoengine.exporter.html.HtmlExportResult;
 import com.validoengine.generator.model.GenerationReport;
 import com.validoengine.generator.model.GenerationResult;
 
+import java.nio.file.Path;
 import java.util.stream.Collectors;
 
 public final class CliOutput {
@@ -57,6 +59,22 @@ public final class CliOutput {
         );
     }
 
+    public String publishText(GenerationResult result, HtmlExportResult exportResult) {
+        return """
+                Valido Engine publish
+                siteId: %s
+                outputDirectory: %s
+                writtenArtifacts: %d
+                """.formatted(
+                result.optionalProjectModel().map(model -> model.site().id().value()).orElse("unknown"),
+                result.optionalProjectModel()
+                        .flatMap(model -> model.exportPlan().targetDirectories().values().stream().findFirst())
+                        .map(Path::toString)
+                        .orElse("unknown"),
+                exportResult.writtenFiles().size()
+        );
+    }
+
     public String doctorJson(GenerationResult result) {
         String diagnostics = result.report().validationReport().diagnostics().stream()
                 .map(diagnostic -> """
@@ -91,6 +109,23 @@ public final class CliOutput {
                 report.algorithmCount(),
                 report.exporterCount(),
                 report.routeCount()
+        );
+    }
+
+    public String publishJson(GenerationResult result, HtmlExportResult exportResult) {
+        String files = exportResult.writtenFiles().stream()
+                .map(path -> "\"" + escape(path.toString()) + "\"")
+                .collect(Collectors.joining(","));
+        return """
+                {"siteId":"%s","outputDirectory":"%s","writtenArtifacts":%d,"files":[%s]}
+                """.formatted(
+                escape(result.optionalProjectModel().map(model -> model.site().id().value()).orElse("unknown")),
+                escape(result.optionalProjectModel()
+                        .flatMap(model -> model.exportPlan().targetDirectories().values().stream().findFirst())
+                        .map(Path::toString)
+                        .orElse("unknown")),
+                exportResult.writtenFiles().size(),
+                files
         );
     }
 

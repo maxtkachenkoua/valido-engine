@@ -114,7 +114,7 @@ public final class RouteGenerator {
     private static RouteModel route(ContentProject contentProject, LocaleCode locale, RouteType type, String path, String sourceAggregateId) {
         return new RouteModel(
                 path,
-                outputFile(contentProject.site().outputDirectory(), path),
+                outputFile(contentProject.projectRoot().resolve(contentProject.site().outputDirectory()).normalize(), path),
                 canonicalUrl(contentProject.site().baseUrl(), path),
                 locale,
                 type,

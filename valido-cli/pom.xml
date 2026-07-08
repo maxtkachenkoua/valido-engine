@@ -22,5 +22,10 @@
             <artifactId>valido-generator</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.validoengine</groupId>
+            <artifactId>valido-exporter-html</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 </project>
