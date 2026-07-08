@@ -26,5 +26,11 @@
             <groupId>org.thymeleaf</groupId>
             <artifactId>thymeleaf</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.validoengine</groupId>
+            <artifactId>valido-generator</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
