@@ -33,6 +33,22 @@
                   th:attr="id=${form.id},data-algorithm-id=${form.algorithmId},data-capability=${form.capability}">
               <div class="workbench-form-heading">
                 <h3 th:text="${form.title}"></h3>
+                <span class="input-mode-badge" th:if="${form.algorithmId == 'validohub.base64'}" data-input-mode-badge>Waiting for input</span>
+              </div>
+              <div class="sample-row" th:if="${form.algorithmId == 'validohub.base64' && form.capability == 'encode'}" aria-label="Examples">
+                <button type="button" class="sample-chip" data-sample="encode-hello">Encode Hello</button>
+                <button type="button" class="sample-chip" data-sample="encode-unicode">Encode Unicode</button>
+                <button type="button" class="sample-chip" data-sample="decode">Decode sample</button>
+                <button type="button" class="sample-chip" data-sample="validate">Validate sample</button>
+              </div>
+              <div class="file-dropzone"
+                   th:if="${form.algorithmId == 'validohub.base64' && form.capability == 'encode'}"
+                   data-file-dropzone>
+                <input type="file" data-file-input aria-label="Choose file to encode">
+                <div>
+                  <strong>Drop a file to encode</strong>
+                  <span data-file-status>No upload. File bytes stay in this browser.</span>
+                </div>
               </div>
               <div class="field-grid">
                 <label class="field"
@@ -80,6 +96,11 @@
               </label>
               <p class="tool-message" aria-live="polite" data-tool-message></p>
               <div class="tool-feedback" data-tool-feedback></div>
+              <div class="preview-panel" data-tool-preview></div>
+              <details class="advanced-panel" data-advanced-panel>
+                <summary>Advanced analysis</summary>
+                <div data-tool-advanced></div>
+              </details>
             </form>
           </div>
         </section>
