@@ -5,6 +5,9 @@ import com.validoengine.core.model.ExportPlan;
 import com.validoengine.core.model.ExporterId;
 import com.validoengine.core.model.RouteModel;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,6 +32,7 @@ public final class ExportPlanBuilder {
         plannedArtifacts.add(targetDirectory.resolve("robots.txt"));
         plannedArtifacts.add(targetDirectory.resolve("search-index.json"));
         plannedArtifacts.add(targetDirectory.resolve("api-metadata.json"));
+        plannedArtifacts.addAll(siteAssetArtifacts(contentProject.projectRoot(), targetDirectory));
         return new ExportPlan(
                 List.of(HTML_EXPORTER_ID, API_METADATA_EXPORTER_ID),
                 Map.of(
@@ -38,5 +42,22 @@ public final class ExportPlanBuilder {
                 plannedArtifacts.stream().distinct().sorted(Comparator.comparing(Path::toString)).toList(),
                 Map.of()
         );
+    }
+
+    private static List<Path> siteAssetArtifacts(Path projectRoot, Path targetDirectory) {
+        Path sourceRoot = projectRoot.resolve("assets").normalize();
+        if (!Files.isDirectory(sourceRoot)) {
+            return List.of();
+        }
+        Path targetRoot = targetDirectory.resolve("assets").normalize();
+        try (var paths = Files.walk(sourceRoot)) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .map(source -> targetRoot.resolve(sourceRoot.relativize(source)).normalize())
+                    .sorted(Comparator.comparing(Path::toString))
+                    .toList();
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Failed to plan site assets in " + sourceRoot, exception);
+        }
     }
 }

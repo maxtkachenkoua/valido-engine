@@ -29,7 +29,7 @@ class HtmlExporterTest {
 
         HtmlExportResult result = new HtmlExporter().export(projectModel);
 
-        assertEquals(projectModel.routes().size() + 3, result.writtenFiles().size());
+        assertEquals(projectModel.routes().size() + 5, result.writtenFiles().size());
         assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "index.html"))));
         assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "tools", "base64-encoder", "index.html"))));
         assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "categories", "encoding", "index.html"))));
@@ -37,6 +37,8 @@ class HtmlExporterTest {
         assertTrue(Files.isRegularFile(outputDirectory.resolve("sitemap.xml")));
         assertTrue(Files.isRegularFile(outputDirectory.resolve("robots.txt")));
         assertTrue(Files.isRegularFile(outputDirectory.resolve("search-index.json")));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("assets", "css", "site.css"))));
+        assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("assets", "js", "site.js"))));
 
         String toolHtml = Files.readString(outputDirectory.resolve(Path.of("en", "tools", "base64-encoder", "index.html")));
         assertTrue(toolHtml.contains("<title>Base64 Encoder, Decoder, and Validator</title>"));
@@ -48,7 +50,8 @@ class HtmlExporterTest {
         assertTrue(toolHtml.contains("class=\"primary-nav\""));
         assertTrue(toolHtml.contains("class=\"breadcrumbs\""));
         assertTrue(toolHtml.contains("class=\"site-footer\""));
-        assertTrue(toolHtml.contains("position: sticky"));
+        assertTrue(toolHtml.contains("<link rel=\"stylesheet\" href=\"/assets/css/site.css\">"));
+        assertTrue(toolHtml.contains("<script src=\"/assets/js/site.js\"></script>"));
         assertTrue(toolHtml.contains("class=\"page-shell\""));
         assertTrue(toolHtml.contains("class=\"workbench-card\""));
         assertTrue(toolHtml.contains("<h2>Run the tool</h2>"));
@@ -65,35 +68,12 @@ class HtmlExporterTest {
         assertTrue(toolHtml.contains("Download result"));
         assertTrue(toolHtml.contains("data-tool-feedback"));
         assertTrue(toolHtml.contains("data-input-mode-badge"));
-        assertTrue(toolHtml.contains("data-sample=\"encode-hello\""));
-        assertTrue(toolHtml.contains("data-file-dropzone"));
         assertTrue(toolHtml.contains("data-tool-preview"));
         assertTrue(toolHtml.contains("data-tool-advanced"));
-        assertTrue(toolHtml.contains("ValidoWorkbench"));
-        assertTrue(toolHtml.contains("registerPlugin"));
-        assertTrue(toolHtml.contains("Base64Plugin"));
-        assertTrue(toolHtml.contains("UrlPlugin"));
-        assertTrue(toolHtml.contains("validohub.url-encoder"));
-        assertTrue(toolHtml.contains("validohub.url-decoder"));
-        assertTrue(toolHtml.contains("Malformed URL encoding"));
-        assertTrue(toolHtml.contains("Invalid percent sequence"));
-        assertTrue(toolHtml.contains("Percent-encoded byte count"));
-        assertTrue(toolHtml.contains("url-hello"));
-        assertTrue(toolHtml.contains("url-malformed"));
-        assertTrue(toolHtml.contains("TextEncoder"));
-        assertTrue(toolHtml.contains("TextDecoder"));
-        assertTrue(toolHtml.contains("Enter text to encode."));
-        assertTrue(toolHtml.contains("Decoded size:"));
-        assertTrue(toolHtml.contains("Decoded size"));
-        assertTrue(toolHtml.contains("Decoded byte size"));
-        assertTrue(toolHtml.contains("Invalid character at position"));
-        assertTrue(toolHtml.contains("JSON.stringify(JSON.parse"));
-        assertTrue(toolHtml.contains("hexPreview"));
-        assertTrue(toolHtml.contains("FileReader"));
-        assertTrue(toolHtml.contains("Output characters"));
-        assertTrue(toolHtml.contains("aria-keyshortcuts"));
-        assertTrue(toolHtml.contains("downloadResult"));
-        assertTrue(toolHtml.contains("Base64URL"));
+        assertTrue(!toolHtml.contains("Base64Plugin"));
+        assertTrue(!toolHtml.contains("UrlPlugin"));
+        assertTrue(!toolHtml.contains("data-sample=\"encode-hello\""));
+        assertTrue(!toolHtml.contains("data-file-dropzone"));
         assertTrue(!toolHtml.contains("This action is not available in the static preview."));
         assertTrue(toolHtml.contains("Base64 represents binary data as ASCII text."));
         assertTrue(toolHtml.contains("<p>Base64 represents binary data as ASCII text."));
@@ -132,6 +112,10 @@ class HtmlExporterTest {
         String siteYaml = Files.readString(site)
                 .replace("directory: generated/validohub", "directory: target/html-exporter-test");
         Files.writeString(site, siteYaml);
+        Files.createDirectories(target.resolve(Path.of("assets", "css")));
+        Files.createDirectories(target.resolve(Path.of("assets", "js")));
+        Files.writeString(target.resolve(Path.of("assets", "css", "site.css")), "body { color: #111; }\n");
+        Files.writeString(target.resolve(Path.of("assets", "js", "site.js")), "window.exampleAssetLoaded = true;\n");
         return target;
     }
 

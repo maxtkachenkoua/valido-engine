@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -44,8 +45,8 @@ public final class HtmlExporter {
     private static final ExporterId HTML_EXPORTER_ID = HtmlExporterDescriptor.ID;
     private static final String PAGE_TEMPLATE = "valido/page";
     private static final Pattern ORDERED_LIST = Pattern.compile("\\d+\\.\\s+.+");
-    private static final String STYLESHEET = readResource("valido/static/styles.css");
-    private static final String CLIENT_SCRIPT = readResource("valido/static/tool-workbench.js");
+    private static final String DEFAULT_STYLESHEET = readResource("valido/static/styles.css");
+    private static final Set<String> STATIC_BROWSER_ACTIONS = Set.of("encode", "decode", "validate");
 
     private final TemplateEngine templateEngine;
 
@@ -90,8 +91,9 @@ public final class HtmlExporter {
         variables.put("description", page.description());
         variables.put("canonical", route.canonicalUrl());
         variables.put("hreflang", hreflang(projectModel, route));
-        variables.put("stylesheet", STYLESHEET);
-        variables.put("clientScript", CLIENT_SCRIPT);
+        variables.put("defaultStylesheet", DEFAULT_STYLESHEET);
+        variables.put("stylesheets", stylesheetAssets(projectModel));
+        variables.put("scripts", scriptAssets(projectModel));
         variables.put("navigation", navigation(projectModel, route.locale()));
         variables.put("breadcrumbs", breadcrumbs(projectModel, route, page.heading()));
         variables.put("heading", page.heading());
@@ -242,12 +244,7 @@ public final class HtmlExporter {
     }
 
     private static boolean supportedBrowserAction(ToolModel tool, String action) {
-        String algorithmId = tool.algorithmBinding().algorithmId().value();
-        return switch (algorithmId) {
-            case "validohub.base64", "validohub.url-encoder", "validohub.url-decoder" ->
-                    "encode".equals(action) || "decode".equals(action) || "validate".equals(action);
-            default -> false;
-        };
+        return STATIC_BROWSER_ACTIONS.contains(action);
     }
 
     private static InputView inputView(FormInputModel input, LocaleCode locale, LocaleCode fallback) {
@@ -310,7 +307,7 @@ public final class HtmlExporter {
         if (!missing.isEmpty()) {
             throw new IllegalArgumentException("ProjectModel ExportPlan is missing HTML route artifacts: " + missing);
         }
-        List<Path> missingStaticArtifacts = staticArtifactPaths(projectModel).stream()
+        List<Path> missingStaticArtifacts = plannedStaticArtifactPaths(projectModel).stream()
                 .filter(Predicate.not(plannedArtifacts::contains))
                 .toList();
         if (!missingStaticArtifacts.isEmpty()) {
@@ -320,20 +317,123 @@ public final class HtmlExporter {
 
     private static List<Path> writeStaticArtifacts(ProjectModel projectModel, Map<ToolId, ToolModel> toolsById) {
         Path targetDirectory = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID);
-        return List.of(
-                writeFile(targetDirectory.resolve("sitemap.xml"), sitemap(projectModel)),
-                writeFile(targetDirectory.resolve("robots.txt"), robots(projectModel)),
-                writeFile(targetDirectory.resolve("search-index.json"), searchIndex(projectModel, toolsById))
-        );
+        List<Path> written = new ArrayList<>();
+        written.add(writeFile(targetDirectory.resolve("sitemap.xml"), sitemap(projectModel)));
+        written.add(writeFile(targetDirectory.resolve("robots.txt"), robots(projectModel)));
+        written.add(writeFile(targetDirectory.resolve("search-index.json"), searchIndex(projectModel, toolsById)));
+        written.addAll(copySiteAssets(projectModel));
+        return List.copyOf(written);
     }
 
-    private static List<Path> staticArtifactPaths(ProjectModel projectModel) {
+    private static List<Path> plannedStaticArtifactPaths(ProjectModel projectModel) {
         Path targetDirectory = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID);
-        return List.of(
+        List<Path> paths = new ArrayList<>(List.of(
                 targetDirectory.resolve("sitemap.xml"),
                 targetDirectory.resolve("robots.txt"),
                 targetDirectory.resolve("search-index.json")
-        );
+        ));
+        paths.addAll(siteAssetPaths(projectModel).stream().map(SiteAsset::target).toList());
+        return paths.stream().distinct().sorted(Comparator.comparing(Path::toString)).toList();
+    }
+
+    private static List<Path> copySiteAssets(ProjectModel projectModel) {
+        List<Path> copied = new ArrayList<>();
+        for (SiteAsset asset : siteAssetPaths(projectModel)) {
+            try {
+                Files.createDirectories(asset.target().getParent());
+                Files.copy(asset.source(), asset.target(), StandardCopyOption.REPLACE_EXISTING);
+                copied.add(asset.target());
+            } catch (IOException exception) {
+                throw new UncheckedIOException("Failed to copy site asset " + asset.source(), exception);
+            }
+        }
+        return copied;
+    }
+
+    private static List<AssetView> stylesheetAssets(ProjectModel projectModel) {
+        return siteAssetPaths(projectModel).stream()
+                .filter(asset -> asset.relativePath().startsWith(Path.of("css")))
+                .filter(asset -> asset.relativePath().getFileName().toString().endsWith(".css"))
+                .map(asset -> new AssetView(asset.href()))
+                .toList();
+    }
+
+    private static List<AssetView> scriptAssets(ProjectModel projectModel) {
+        return siteAssetPaths(projectModel).stream()
+                .filter(asset -> asset.relativePath().startsWith(Path.of("js")))
+                .filter(asset -> asset.relativePath().getFileName().toString().endsWith(".js"))
+                .sorted(HtmlExporter::scriptOrder)
+                .map(asset -> new AssetView(asset.href()))
+                .toList();
+    }
+
+    private static int scriptOrder(SiteAsset left, SiteAsset right) {
+        int groupCompare = Integer.compare(scriptGroup(left.relativePath()), scriptGroup(right.relativePath()));
+        if (groupCompare != 0) {
+            return groupCompare;
+        }
+        int helperCompare = Integer.compare(workbenchHelperOrder(left.relativePath()), workbenchHelperOrder(right.relativePath()));
+        if (helperCompare != 0) {
+            return helperCompare;
+        }
+        return left.relativePath().toString().compareTo(right.relativePath().toString());
+    }
+
+    private static int scriptGroup(Path relativePath) {
+        String value = relativePath.toString().replace('\\', '/');
+        if (value.startsWith("js/workbench/")) {
+            return 0;
+        }
+        if (value.startsWith("js/tools/")) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private static int workbenchHelperOrder(Path relativePath) {
+        return switch (relativePath.getFileName().toString()) {
+            case "clipboard.js" -> 0;
+            case "download.js" -> 1;
+            case "file.js" -> 2;
+            case "keyboard.js" -> 3;
+            case "preview.js" -> 4;
+            case "stats.js" -> 5;
+            case "utf8.js" -> 6;
+            case "hex.js" -> 7;
+            case "framework.js" -> 8;
+            default -> 99;
+        };
+    }
+
+    private static List<SiteAsset> siteAssetPaths(ProjectModel projectModel) {
+        Path projectRoot = projectRoot(projectModel);
+        Path sourceRoot = projectRoot.resolve("assets").normalize();
+        if (!Files.isDirectory(sourceRoot)) {
+            return List.of();
+        }
+        Path targetRoot = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID).resolve("assets").normalize();
+        try (var paths = Files.walk(sourceRoot)) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .map(source -> {
+                        Path relative = sourceRoot.relativize(source);
+                        return new SiteAsset(source, targetRoot.resolve(relative).normalize(), relative);
+                    })
+                    .sorted(Comparator.comparing(asset -> asset.relativePath().toString()))
+                    .toList();
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Failed to discover site assets in " + sourceRoot, exception);
+        }
+    }
+
+    private static Path projectRoot(ProjectModel projectModel) {
+        Path targetDirectory = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID);
+        Path outputDirectory = projectModel.site().outputDirectory().normalize();
+        Path root = targetDirectory;
+        for (int index = 0; index < outputDirectory.getNameCount(); index++) {
+            root = root.getParent();
+        }
+        return root == null ? targetDirectory : root.normalize();
     }
 
     private static Path writeFile(Path path, String content) {
@@ -633,6 +733,15 @@ public final class HtmlExporter {
     }
 
     public record HreflangView(String locale, String href) {
+    }
+
+    public record AssetView(String href) {
+    }
+
+    private record SiteAsset(Path source, Path target, Path relativePath) {
+        private String href() {
+            return "/assets/" + relativePath.toString().replace('\\', '/');
+        }
     }
 
     public record FormView(

@@ -7,7 +7,8 @@
   <meta name="description" th:attr="content=${description}">
   <link rel="canonical" th:attr="href=${canonical}">
   <link th:each="alternate : ${hreflang}" rel="alternate" th:attr="hreflang=${alternate.locale},href=${alternate.href}">
-  <style th:utext="${stylesheet}"></style>
+  <style th:utext="${defaultStylesheet}"></style>
+  <link th:each="asset : ${stylesheets}" rel="stylesheet" th:attr="href=${asset.href}">
 </head>
 <body>
   <header th:replace="~{valido/fragments :: siteHeader}"></header>
@@ -33,32 +34,7 @@
                   th:attr="id=${form.id},data-algorithm-id=${form.algorithmId},data-capability=${form.capability}">
               <div class="workbench-form-heading">
                 <h3 th:text="${form.title}"></h3>
-                <span class="input-mode-badge"
-                      th:if="${form.algorithmId == 'validohub.base64' || form.algorithmId == 'validohub.url-encoder' || form.algorithmId == 'validohub.url-decoder'}"
-                      data-input-mode-badge>Waiting for input</span>
-              </div>
-              <div class="sample-row" th:if="${form.algorithmId == 'validohub.base64' && form.capability == 'encode'}" aria-label="Examples">
-                <button type="button" class="sample-chip" data-sample="encode-hello">Encode Hello</button>
-                <button type="button" class="sample-chip" data-sample="encode-unicode">Encode Unicode</button>
-                <button type="button" class="sample-chip" data-sample="decode">Decode sample</button>
-                <button type="button" class="sample-chip" data-sample="validate">Validate sample</button>
-              </div>
-              <div class="sample-row"
-                   th:if="${form.algorithmId == 'validohub.url-encoder' || form.algorithmId == 'validohub.url-decoder'}"
-                   aria-label="Examples">
-                <button type="button" class="sample-chip" data-sample="url-hello">Hello World</button>
-                <button type="button" class="sample-chip" data-sample="url-unicode">Unicode</button>
-                <button type="button" class="sample-chip" data-sample="url-encoded">Already encoded URL</button>
-                <button type="button" class="sample-chip" data-sample="url-malformed">Malformed URL encoding</button>
-              </div>
-              <div class="file-dropzone"
-                   th:if="${form.algorithmId == 'validohub.base64' && form.capability == 'encode'}"
-                   data-file-dropzone>
-                <input type="file" data-file-input aria-label="Choose file to encode">
-                <div>
-                  <strong>Drop a file to encode</strong>
-                  <span data-file-status>No upload. File bytes stay in this browser.</span>
-                </div>
+                <span class="input-mode-badge" data-input-mode-badge>Waiting for input</span>
               </div>
               <div class="field-grid">
                 <label class="field"
@@ -137,6 +113,6 @@
     </section>
   </main>
   <footer th:replace="~{valido/fragments :: siteFooter}"></footer>
-  <script th:utext="${clientScript}"></script>
+  <script th:each="asset : ${scripts}" th:attr="src=${asset.href}"></script>
 </body>
 </html>
