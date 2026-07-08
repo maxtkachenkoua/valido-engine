@@ -15,4 +15,13 @@
 
     <name>Valido Examples</name>
     <description>Example resources for the demo ValidoHub site.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.validoengine</groupId>
+            <artifactId>valido-generator</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

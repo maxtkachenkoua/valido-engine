@@ -1,0 +1,10 @@
+schemaVersion: 1
+code: PL
+slug: poland
+name:
+  en: Poland
+  pl: Polska
+region: Europe
+languages: [pl, en]
+currency: PLN
+relatedCountries: []

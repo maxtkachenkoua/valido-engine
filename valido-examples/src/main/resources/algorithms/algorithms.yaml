@@ -1,0 +1,103 @@
+schemaVersion: 1
+algorithms:
+  - algorithmId: validohub.pesel
+    javaClass: com.validohub.algorithms.pl.PeselAlgorithm
+    version: 1
+    capabilities: [validate, generate, parse, explain]
+    outputs:
+      validate:
+        - name: valid
+          type: boolean
+        - name: errors
+          type: array
+      parse:
+        - name: birthDate
+          type: date
+        - name: gender
+          type: string
+    errors:
+      - code: INVALID_LENGTH
+        message:
+          en: PESEL must contain 11 digits.
+      - code: INVALID_CHECKSUM
+        message:
+          en: PESEL checksum is invalid.
+    examples:
+      - capability: validate
+        input:
+          pesel: "44051401458"
+        expected:
+          valid: true
+      - capability: validate
+        input:
+          pesel: "44051401459"
+        expected:
+          valid: false
+          errors: [INVALID_CHECKSUM]
+  - algorithmId: validohub.base64
+    javaClass: com.validohub.algorithms.encoding.Base64Algorithm
+    version: 1
+    capabilities: [encode, decode, validate, explain, format]
+    outputs:
+      encode:
+        - name: output
+          type: text
+      decode:
+        - name: output
+          type: text
+      validate:
+        - name: valid
+          type: boolean
+        - name: errors
+          type: array
+    errors:
+      - code: INVALID_BASE64
+        message:
+          en: Input is not valid Base64.
+    examples:
+      - capability: encode
+        input:
+          input: hello
+          urlSafe: false
+          padding: true
+        expected:
+          output: aGVsbG8=
+      - capability: decode
+        input:
+          input: aGVsbG8=
+        expected:
+          output: hello
+  - algorithmId: validohub.uuid
+    javaClass: com.validohub.algorithms.developer.UuidAlgorithm
+    version: 1
+    capabilities: [generate, validate, parse, convert, explain]
+    outputs:
+      generate:
+        - name: uuids
+          type: array
+      validate:
+        - name: valid
+          type: boolean
+        - name: errors
+          type: array
+      parse:
+        - name: version
+          type: string
+        - name: variant
+          type: string
+    errors:
+      - code: INVALID_UUID
+        message:
+          en: Input is not a valid UUID.
+    examples:
+      - capability: validate
+        input:
+          uuid: 550e8400-e29b-41d4-a716-446655440000
+        expected:
+          valid: true
+      - capability: parse
+        input:
+          uuid: 550e8400-e29b-41d4-a716-446655440000
+        expected:
+          version: v4
+          variant: rfc4122

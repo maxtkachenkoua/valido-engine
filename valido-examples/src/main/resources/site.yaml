@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: validohub
+name:
+  en: ValidoHub
+baseUrl: https://validohub.example
+defaultLocale: en
+locales: [en]
+mode: demo
+modules:
+  - validohub
+output:
+  directory: generated/validohub
+routing:
+  defaultToolPath: tools
+  trailingSlash: true
+generation:
+  includeDrafts: false
+seo:
+  title:
+    en: ValidoHub
+  description:
+    en: Expert validation, generation, parsing, encoding, and conversion tools.

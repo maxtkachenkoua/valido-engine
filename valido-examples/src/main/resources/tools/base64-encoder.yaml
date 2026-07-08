@@ -1,0 +1,56 @@
+schemaVersion: 1
+id: base64-encoder
+kind: tool
+module: validohub
+category: encoding
+status: active
+name:
+  en: Base64 Toolkit
+summary:
+  en: Encode, decode, validate, and explain Base64 and Base64URL.
+capabilities:
+  - encode
+  - decode
+  - validate
+  - explain
+  - format
+algorithm:
+  algorithmId: validohub.base64
+forms:
+  encode:
+    inputs:
+      - type: textarea
+        name: input
+        label:
+          en: Input
+        required: true
+      - type: checkbox
+        name: urlSafe
+        label:
+          en: URL safe
+      - type: checkbox
+        name: padding
+        label:
+          en: Include padding
+        default: true
+    actions: [encode, decode]
+  validate:
+    inputs:
+      - type: textarea
+        name: input
+        label:
+          en: Base64 input
+        required: true
+    actions: [validate]
+related:
+  explicit: [uuid-generator]
+  auto:
+    sameCountry: true
+    sameCategory: true
+    sameCapability: true
+    sameModule: true
+seo:
+  title:
+    en: Base64 Encoder, Decoder, and Validator
+  description:
+    en: Encode, decode, validate, format, and explain Base64 and Base64URL values.

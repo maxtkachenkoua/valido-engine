@@ -1,0 +1,14 @@
+schemaVersion: 1
+id: national-id
+slug: national-id
+name:
+  en: National ID
+summary:
+  en: Tools for validating, parsing, and explaining national identification numbers.
+parent: null
+order: 10
+seo:
+  title:
+    en: National ID Tools
+  description:
+    en: Validate and explain national identification numbers with expert tools.

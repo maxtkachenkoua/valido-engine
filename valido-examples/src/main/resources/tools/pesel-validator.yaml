@@ -1,0 +1,55 @@
+schemaVersion: 1
+id: pesel-validator
+kind: tool
+module: validohub
+country: PL
+category: national-id
+status: active
+name:
+  en: PESEL Validator
+summary:
+  en: Validate, parse, generate, and explain Polish PESEL numbers.
+capabilities:
+  - validate
+  - generate
+  - parse
+  - explain
+algorithm:
+  algorithmId: validohub.pesel
+forms:
+  validate:
+    inputs:
+      - type: text
+        name: pesel
+        label:
+          en: PESEL
+        required: true
+        pattern: "^[0-9]{11}$"
+    actions: [validate]
+  generate:
+    inputs:
+      - type: select
+        name: gender
+        label:
+          en: Gender
+        options: [female, male, any]
+        default: any
+      - type: text
+        name: birthDate
+        label:
+          en: Birth date
+        placeholder:
+          en: YYYY-MM-DD
+    actions: [generate]
+related:
+  explicit: []
+  auto:
+    sameCountry: true
+    sameCategory: true
+    sameCapability: true
+    sameModule: true
+seo:
+  title:
+    en: PESEL Validator - Validate Polish PESEL Online
+  description:
+    en: Validate and explain Polish PESEL numbers with checksum, birth date, gender, and examples.

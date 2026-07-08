@@ -1,0 +1,55 @@
+schemaVersion: 1
+id: uuid-generator
+kind: tool
+module: validohub
+category: developer
+status: active
+name:
+  en: UUID Generator and Analyzer
+summary:
+  en: Generate, validate, convert, and analyze UUID versions.
+capabilities:
+  - generate
+  - validate
+  - parse
+  - convert
+  - explain
+algorithm:
+  algorithmId: validohub.uuid
+forms:
+  generate:
+    inputs:
+      - type: select
+        name: version
+        label:
+          en: UUID version
+        options: [v4, v7]
+        default: v4
+      - type: number
+        name: count
+        label:
+          en: Count
+        default: 1
+        min: 1
+        max: 100
+    actions: [generate]
+  validate:
+    inputs:
+      - type: text
+        name: uuid
+        label:
+          en: UUID
+        required: true
+    actions: [validate, parse]
+related:
+  explicit: [base64-encoder]
+  auto:
+    sameCountry: true
+    sameCategory: true
+    sameCapability: true
+    sameModule: true
+seo:
+  title:
+    en: UUID Generator and Analyzer
+  description:
+    en: Generate UUID values, validate UUID syntax, and analyze UUID version and variant metadata.

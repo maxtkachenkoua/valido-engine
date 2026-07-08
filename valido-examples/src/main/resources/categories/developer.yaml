@@ -1,0 +1,14 @@
+schemaVersion: 1
+id: developer
+slug: developer
+name:
+  en: Developer
+summary:
+  en: Tools for developers working with identifiers, formats, and structured data.
+parent: null
+order: 30
+seo:
+  title:
+    en: Developer Tools
+  description:
+    en: Generate, validate, convert, and analyze developer-focused data.
