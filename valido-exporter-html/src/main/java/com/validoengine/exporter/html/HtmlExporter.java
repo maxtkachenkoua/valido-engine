@@ -220,11 +220,13 @@ public final class HtmlExporter {
         return tool.forms().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> formView(tool, entry.getKey(), entry.getValue(), locale, fallback))
+                .filter(form -> !form.actions().isEmpty())
                 .toList();
     }
 
     private static FormView formView(ToolModel tool, CapabilityId capability, FormModel form, LocaleCode locale, LocaleCode fallback) {
         List<ActionView> actions = form.actions().stream()
+                .filter(action -> supportedBrowserAction(tool, action.value()))
                 .map(action -> new ActionView(action.value(), actionLabel(action.value())))
                 .toList();
         return new FormView(
@@ -237,6 +239,12 @@ public final class HtmlExporter {
                         .map(input -> inputView(input, locale, fallback))
                         .toList()
         );
+    }
+
+    private static boolean supportedBrowserAction(ToolModel tool, String action) {
+        String algorithmId = tool.algorithmBinding().algorithmId().value();
+        return "validohub.base64".equals(algorithmId)
+                && ("encode".equals(action) || "decode".equals(action) || "validate".equals(action));
     }
 
     private static InputView inputView(FormInputModel input, LocaleCode locale, LocaleCode fallback) {

@@ -12,29 +12,20 @@
 <body>
   <header th:replace="~{valido/fragments :: siteHeader}"></header>
   <main class="site-main">
-    <section class="hero-shell">
-      <div class="container">
+    <section class="page-shell">
+      <div class="container page-stack">
         <nav th:replace="~{valido/fragments :: breadcrumbs}"></nav>
-        <div class="hero-grid">
-          <div class="hero-copy">
-            <span class="eyebrow" th:text="${pageLabel}"></span>
-            <h1 th:text="${heading}"></h1>
-            <p th:if="${summary != ''}" th:text="${summary}"></p>
-          </div>
-          <aside class="hero-panel" th:if="${links.size() > 0}">
-            <h2>Related</h2>
-            <div th:replace="~{valido/fragments :: linkList(${links}, 'panel-links')}"></div>
-          </aside>
-        </div>
-      </div>
-    </section>
-    <section class="content-shell">
-      <div class="container content-grid">
+        <header class="page-intro">
+          <span class="eyebrow" th:text="${pageLabel}"></span>
+          <h1 th:text="${heading}"></h1>
+          <p th:if="${summary != ''}" th:text="${summary}"></p>
+        </header>
+
         <section class="workbench-card" th:if="${forms.size() > 0}" aria-label="Tool input and output">
           <div class="workbench-heading">
-            <span class="eyebrow">Interactive tool</span>
-            <h2>Try it now</h2>
-            <p>Enter a value, run the selected action, and copy the result without leaving the page.</p>
+            <span class="eyebrow">Workbench</span>
+            <h2>Run the tool</h2>
+            <p>Paste input, choose an action, and copy the result directly in your browser.</p>
           </div>
           <div class="workbench-list">
             <form class="tool-workbench"
@@ -90,17 +81,25 @@
             </form>
           </div>
         </section>
+
         <article class="content-card" th:if="${sections.size() > 0}">
-          <section class="content-section" th:each="section : ${sections}">
-            <h2 th:text="${section.title}"></h2>
+          <div class="section-heading">
+            <span class="eyebrow">Documentation</span>
+            <h2>Reference notes</h2>
+          </div>
+          <details class="doc-accordion" th:each="section : ${sections}">
+            <summary th:text="${section.title}"></summary>
             <div class="rich-text" th:utext="${section.html()}"></div>
-          </section>
+          </details>
         </article>
-        <article class="content-card" th:if="${sections.size() == 0}">
-          <h2 th:text="${heading}"></h2>
-          <p th:if="${summary != ''}" th:text="${summary}"></p>
-          <div th:if="${links.size() > 0}" th:replace="~{valido/fragments :: linkList(${links}, 'card-grid')}"></div>
-        </article>
+
+        <section class="related-section" th:if="${links.size() > 0}">
+          <div class="section-heading">
+            <span class="eyebrow" th:text="${pageType == 'tool' ? 'Related tools' : 'Browse'}"></span>
+            <h2 th:text="${pageType == 'tool' ? 'Continue with related tools' : 'Available tools'}"></h2>
+          </div>
+          <div th:replace="~{valido/fragments :: linkList(${links}, 'card-grid')}"></div>
+        </section>
       </div>
     </section>
   </main>

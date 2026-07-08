@@ -49,14 +49,27 @@ class HtmlExporterTest {
         assertTrue(toolHtml.contains("class=\"breadcrumbs\""));
         assertTrue(toolHtml.contains("class=\"site-footer\""));
         assertTrue(toolHtml.contains("position: sticky"));
+        assertTrue(toolHtml.contains("class=\"page-shell\""));
         assertTrue(toolHtml.contains("class=\"workbench-card\""));
+        assertTrue(toolHtml.contains("<h2>Run the tool</h2>"));
+        assertTrue(toolHtml.contains("class=\"doc-accordion\""));
+        assertTrue(toolHtml.contains("<summary>How Base64 encoding works</summary>"));
+        assertTrue(toolHtml.contains("Continue with related tools"));
         assertTrue(toolHtml.contains("data-algorithm-id=\"validohub.base64\""));
         assertTrue(toolHtml.contains("data-action=\"encode\""));
+        assertTrue(toolHtml.contains("data-action=\"decode\""));
+        assertTrue(toolHtml.contains("data-action=\"validate\""));
+        assertTrue(!toolHtml.contains("data-action=\"format\""));
+        assertTrue(!toolHtml.contains("data-action=\"explain\""));
         assertTrue(toolHtml.contains("Copy result"));
         assertTrue(toolHtml.contains("TextEncoder"));
+        assertTrue(toolHtml.contains("TextDecoder"));
         assertTrue(toolHtml.contains("Enter text to encode."));
+        assertTrue(toolHtml.contains("Valid Base64. Decoded byte length:"));
+        assertTrue(!toolHtml.contains("This action is not available in the static preview."));
         assertTrue(toolHtml.contains("Base64 represents binary data as ASCII text."));
         assertTrue(toolHtml.contains("<p>Base64 represents binary data as ASCII text."));
+        assertTrue(toolHtml.indexOf("class=\"workbench-card\"") < toolHtml.indexOf("class=\"content-card\""));
 
         String sitemap = Files.readString(outputDirectory.resolve("sitemap.xml"));
         assertTrue(sitemap.contains("<loc>https://validohub.example/en/tools/base64-encoder/</loc>"));
