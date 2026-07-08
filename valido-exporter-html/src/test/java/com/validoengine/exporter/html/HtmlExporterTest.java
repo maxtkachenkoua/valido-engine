@@ -62,10 +62,17 @@ class HtmlExporterTest {
         assertTrue(!toolHtml.contains("data-action=\"format\""));
         assertTrue(!toolHtml.contains("data-action=\"explain\""));
         assertTrue(toolHtml.contains("Copy result"));
+        assertTrue(toolHtml.contains("Download result"));
+        assertTrue(toolHtml.contains("data-tool-feedback"));
         assertTrue(toolHtml.contains("TextEncoder"));
         assertTrue(toolHtml.contains("TextDecoder"));
         assertTrue(toolHtml.contains("Enter text to encode."));
-        assertTrue(toolHtml.contains("Valid Base64. Decoded byte length:"));
+        assertTrue(toolHtml.contains("Decoded size:"));
+        assertTrue(toolHtml.contains("Decoded size"));
+        assertTrue(toolHtml.contains("Output length"));
+        assertTrue(toolHtml.contains("aria-keyshortcuts"));
+        assertTrue(toolHtml.contains("downloadResult"));
+        assertTrue(toolHtml.contains("Base64URL"));
         assertTrue(!toolHtml.contains("This action is not available in the static preview."));
         assertTrue(toolHtml.contains("Base64 represents binary data as ASCII text."));
         assertTrue(toolHtml.contains("<p>Base64 represents binary data as ASCII text."));
