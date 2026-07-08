@@ -21,6 +21,7 @@ public record ToolModel(
         Map<CapabilityId, FormModel> forms,
         LocalizedStringList aliases,
         SeoModel seo,
+        RelatedConfigModel relatedConfig,
         Map<LocaleCode, RouteModel> routes,
         List<RelatedLinkModel> relatedLinks
 ) {
@@ -39,6 +40,7 @@ public record ToolModel(
         forms = forms == null ? Map.of() : Map.copyOf(forms);
         aliases = aliases == null ? LocalizedStringList.empty() : aliases;
         seo = seo == null ? SeoModel.empty() : seo;
+        relatedConfig = relatedConfig == null ? RelatedConfigModel.defaults() : relatedConfig;
         routes = routes == null ? Map.of() : Map.copyOf(routes);
         relatedLinks = relatedLinks == null ? List.of() : List.copyOf(relatedLinks);
     }

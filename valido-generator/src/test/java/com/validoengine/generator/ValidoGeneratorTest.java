@@ -2,12 +2,15 @@ package com.validoengine.generator;
 
 import com.validoengine.generator.model.GenerationPhase;
 import com.validoengine.generator.model.GenerationRequest;
+import com.validoengine.core.model.RelatedReason;
+import com.validoengine.core.model.ToolId;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,7 +57,7 @@ class ValidoGeneratorTest {
                 route.path().equals("/en/poland/pesel-validator/")
                         && route.outputFile().toString().equals(peselOutput)
                         && route.canonicalUrl().equals("https://validohub.example/en/poland/pesel-validator/")));
-        assertTrue(model.relatedLinks().isEmpty());
+        assertEquals(2, model.relatedLinks().size());
         assertTrue(model.exportPlan().exporters().isEmpty());
         assertTrue(model.exportPlan().generatedArtifacts().isEmpty());
     }
@@ -82,6 +85,46 @@ class ValidoGeneratorTest {
         assertEquals(GenerationPhase.ROUTE_GENERATION, result.report().phase());
         assertTrue(result.report().validationReport().diagnostics().stream()
                 .anyMatch(diagnostic -> "ROUTE_COLLISION".equals(diagnostic.code())));
+    }
+
+    @Test
+    void resolvesRelatedLinksInDeterministicOrderAndDeduplicates() throws IOException {
+        writeRelatedProject(tempDir);
+
+        var result = new ValidoGenerator().generate(GenerationRequest.forProjectRoot(tempDir));
+
+        assertTrue(result.successful());
+        var model = result.optionalProjectModel().orElseThrow();
+        var source = model.tools().stream()
+                .filter(tool -> tool.id().equals(new ToolId("source-tool")))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(
+                List.of(
+                        "country-tool",
+                        "country-second-tool",
+                        "category-alpha-tool",
+                        "category-zulu-tool",
+                        "capability-tool",
+                        "module-tool"
+                ),
+                source.relatedLinks().stream().map(link -> link.toolId().value()).toList()
+        );
+        assertEquals(
+                List.of(
+                        RelatedReason.EXPLICIT,
+                        RelatedReason.SAME_COUNTRY,
+                        RelatedReason.SAME_CATEGORY,
+                        RelatedReason.SAME_CATEGORY,
+                        RelatedReason.SAME_CAPABILITY,
+                        RelatedReason.SAME_MODULE
+                ),
+                source.relatedLinks().stream().map(link -> link.reason()).toList()
+        );
+        assertEquals(1, source.relatedLinks().stream()
+                .filter(link -> link.toolId().equals(new ToolId("country-tool")))
+                .count());
     }
 
     private static void writeProject(Path root, String mode, String toolCapability, String algorithmCapability) throws IOException {
@@ -239,6 +282,118 @@ class ValidoGeneratorTest {
                           en: Input
                     actions: [validate]
                 """);
+    }
+
+    private static void writeRelatedProject(Path root) throws IOException {
+        write(root.resolve("site.yaml"), """
+                schemaVersion: 1
+                id: validohub
+                name:
+                  en: ValidoHub
+                baseUrl: https://validohub.example
+                defaultLocale: en
+                locales: [en]
+                mode: demo
+                modules: [validohub, otherhub]
+                output:
+                  directory: generated/validohub
+                """);
+        write(root.resolve("categories/source.yaml"), """
+                schemaVersion: 1
+                id: source-category
+                slug: source-category
+                name:
+                  en: Source
+                summary:
+                  en: Source category.
+                """);
+        write(root.resolve("categories/other.yaml"), """
+                schemaVersion: 1
+                id: other-category
+                slug: other-category
+                name:
+                  en: Other
+                summary:
+                  en: Other category.
+                """);
+        write(root.resolve("countries/poland.yaml"), """
+                schemaVersion: 1
+                code: PL
+                slug: poland
+                name:
+                  en: Poland
+                """);
+        write(root.resolve("algorithms/algorithms.yaml"), """
+                schemaVersion: 1
+                algorithms:
+                  - algorithmId: validohub.validate
+                    javaClass: com.validohub.algorithms.ValidateAlgorithm
+                    version: 1
+                    capabilities: [validate]
+                  - algorithmId: validohub.generate
+                    javaClass: com.validohub.algorithms.GenerateAlgorithm
+                    version: 1
+                    capabilities: [generate]
+                  - algorithmId: validohub.decode
+                    javaClass: com.validohub.algorithms.DecodeAlgorithm
+                    version: 1
+                    capabilities: [decode]
+                """);
+
+        writeTool(root, "source-tool", "Source Tool", "validohub", "source-category", "PL", "validate", "validohub.validate", """
+                related:
+                  explicit:
+                    - country-tool
+                    - country-tool
+                  auto:
+                    sameCountry: true
+                    sameCategory: true
+                    sameCapability: true
+                    sameModule: true
+                """);
+        writeTool(root, "country-tool", "Country Tool", "otherhub", "other-category", "PL", "generate", "validohub.generate", "");
+        writeTool(root, "country-second-tool", "Second Country Tool", "otherhub", "other-category", "PL", "generate", "validohub.generate", "");
+        writeTool(root, "category-zulu-tool", "Zulu Category Tool", "otherhub", "source-category", null, "decode", "validohub.decode", "");
+        writeTool(root, "category-alpha-tool", "Alpha Category Tool", "otherhub", "source-category", null, "generate", "validohub.generate", "");
+        writeTool(root, "capability-tool", "Capability Tool", "otherhub", "other-category", null, "validate", "validohub.validate", "");
+        writeTool(root, "module-tool", "Module Tool", "validohub", "other-category", null, "generate", "validohub.generate", "");
+    }
+
+    private static void writeTool(
+            Path root,
+            String id,
+            String title,
+            String module,
+            String category,
+            String country,
+            String capability,
+            String algorithmId,
+            String related
+    ) throws IOException {
+        String countryLine = country == null ? "" : "country: " + country + "\n";
+        write(root.resolve("tools/" + id + ".yaml"), """
+                schemaVersion: 1
+                id: %s
+                kind: tool
+                module: %s
+                %scategory: %s
+                status: active
+                name:
+                  en: %s
+                summary:
+                  en: %s summary.
+                capabilities: [%s]
+                algorithm:
+                  algorithmId: %s
+                forms:
+                  %s:
+                    inputs:
+                      - type: text
+                        name: input
+                        label:
+                          en: Input
+                    actions: [%s]
+                %s""".formatted(id, module, countryLine, category, title, title, capability, algorithmId, capability, capability, related));
     }
 
     private static void write(Path path, String content) throws IOException {

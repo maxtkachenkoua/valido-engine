@@ -18,15 +18,22 @@ public final class ValidoGenerator {
     private final ContentProjectLoader contentProjectLoader;
     private final ProjectModelAssembler projectModelAssembler;
     private final RouteGenerator routeGenerator;
+    private final RelatedLinkResolver relatedLinkResolver;
 
     public ValidoGenerator() {
-        this(new ContentProjectLoader(), new ProjectModelAssembler(), new RouteGenerator());
+        this(new ContentProjectLoader(), new ProjectModelAssembler(), new RouteGenerator(), new RelatedLinkResolver());
     }
 
-    public ValidoGenerator(ContentProjectLoader contentProjectLoader, ProjectModelAssembler projectModelAssembler, RouteGenerator routeGenerator) {
+    public ValidoGenerator(
+            ContentProjectLoader contentProjectLoader,
+            ProjectModelAssembler projectModelAssembler,
+            RouteGenerator routeGenerator,
+            RelatedLinkResolver relatedLinkResolver
+    ) {
         this.contentProjectLoader = Objects.requireNonNull(contentProjectLoader, "contentProjectLoader");
         this.projectModelAssembler = Objects.requireNonNull(projectModelAssembler, "projectModelAssembler");
         this.routeGenerator = Objects.requireNonNull(routeGenerator, "routeGenerator");
+        this.relatedLinkResolver = Objects.requireNonNull(relatedLinkResolver, "relatedLinkResolver");
     }
 
     public GenerationResult generate(GenerationRequest request) {
@@ -50,7 +57,7 @@ public final class ValidoGenerator {
             );
         }
 
-        ProjectModel projectModel = projectModelAssembler.assemble(contentLoadResult.project(), routeGenerationResult.routes());
+        ProjectModel projectModel = relatedLinkResolver.resolve(projectModelAssembler.assemble(contentLoadResult.project(), routeGenerationResult.routes()));
         return new GenerationResult(
                 projectModel,
                 report(projectModel, contentLoadResult, generationReport, GenerationPhase.PROJECT_MODEL_ASSEMBLY, true),

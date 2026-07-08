@@ -38,6 +38,7 @@ import com.validoengine.core.model.LocaleCode;
 import com.validoengine.core.model.LocalizedStringList;
 import com.validoengine.core.model.LocalizedText;
 import com.validoengine.core.model.ModuleId;
+import com.validoengine.core.model.RelatedConfigModel;
 import com.validoengine.core.model.SeoModel;
 import com.validoengine.core.model.SiteId;
 import com.validoengine.core.model.SiteMode;
@@ -131,6 +132,7 @@ public final class ContentProjectMapper {
                 forms,
                 localizedStringList(dsl.aliases),
                 seo(dsl.seo),
+                relatedConfig(dsl.related),
                 Map.of(),
                 List.of()
         );
@@ -141,6 +143,20 @@ public final class ContentProjectMapper {
                 new CapabilityId(capability),
                 nullToEmpty(form.inputs).stream().map(ContentProjectMapper::mapInput).toList(),
                 form.actions.stream().map(CapabilityId::new).toList()
+        );
+    }
+
+    private static RelatedConfigModel relatedConfig(ToolDsl.RelatedDsl related) {
+        if (related == null) {
+            return RelatedConfigModel.defaults();
+        }
+        ToolDsl.RelatedAutoDsl auto = related.auto;
+        return new RelatedConfigModel(
+                nullToEmpty(related.explicit).stream().map(ToolId::new).toList(),
+                auto == null || auto.sameCountry == null || auto.sameCountry,
+                auto == null || auto.sameCategory == null || auto.sameCategory,
+                auto == null || auto.sameCapability == null || auto.sameCapability,
+                auto == null || auto.sameModule == null || auto.sameModule
         );
     }
 
