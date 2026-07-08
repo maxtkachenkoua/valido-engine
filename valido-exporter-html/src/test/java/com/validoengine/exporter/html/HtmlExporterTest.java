@@ -43,7 +43,14 @@ class HtmlExporterTest {
         assertTrue(toolHtml.contains("name=\"description\""));
         assertTrue(toolHtml.contains("rel=\"canonical\" href=\"https://validohub.example/en/tools/base64-encoder/\""));
         assertTrue(toolHtml.contains("rel=\"alternate\" hreflang=\"en\" href=\"https://validohub.example/en/tools/base64-encoder/\""));
+        assertTrue(toolHtml.contains("class=\"site-header\""));
+        assertTrue(toolHtml.contains("class=\"brand-mark\""));
+        assertTrue(toolHtml.contains("class=\"primary-nav\""));
+        assertTrue(toolHtml.contains("class=\"breadcrumbs\""));
+        assertTrue(toolHtml.contains("class=\"site-footer\""));
+        assertTrue(toolHtml.contains("position: sticky"));
         assertTrue(toolHtml.contains("Base64 represents binary data as ASCII text."));
+        assertTrue(toolHtml.contains("<p>Base64 represents binary data as ASCII text."));
 
         String sitemap = Files.readString(outputDirectory.resolve("sitemap.xml"));
         assertTrue(sitemap.contains("<loc>https://validohub.example/en/tools/base64-encoder/</loc>"));

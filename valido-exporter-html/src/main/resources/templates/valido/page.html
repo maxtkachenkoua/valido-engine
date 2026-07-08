@@ -1,0 +1,49 @@
+<!doctype html>
+<html th:lang="${locale}" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title th:text="${title}"></title>
+  <meta name="description" th:attr="content=${description}">
+  <link rel="canonical" th:attr="href=${canonical}">
+  <link th:each="alternate : ${hreflang}" rel="alternate" th:attr="hreflang=${alternate.locale},href=${alternate.href}">
+  <style th:utext="${stylesheet}"></style>
+</head>
+<body>
+  <header th:replace="~{valido/fragments :: siteHeader}"></header>
+  <main class="site-main">
+    <section class="hero-shell">
+      <div class="container">
+        <nav th:replace="~{valido/fragments :: breadcrumbs}"></nav>
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <span class="eyebrow" th:text="${pageLabel}"></span>
+            <h1 th:text="${heading}"></h1>
+            <p th:if="${summary != ''}" th:text="${summary}"></p>
+          </div>
+          <aside class="hero-panel" th:if="${links.size() > 0}">
+            <h2>Related</h2>
+            <div th:replace="~{valido/fragments :: linkList(${links}, 'panel-links')}"></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+    <section class="content-shell">
+      <div class="container content-grid">
+        <article class="content-card" th:if="${sections.size() > 0}">
+          <section class="content-section" th:each="section : ${sections}">
+            <h2 th:text="${section.title}"></h2>
+            <div class="rich-text" th:utext="${section.html()}"></div>
+          </section>
+        </article>
+        <article class="content-card" th:if="${sections.size() == 0}">
+          <h2 th:text="${heading}"></h2>
+          <p th:if="${summary != ''}" th:text="${summary}"></p>
+          <div th:if="${links.size() > 0}" th:replace="~{valido/fragments :: linkList(${links}, 'card-grid')}"></div>
+        </article>
+      </div>
+    </section>
+  </main>
+  <footer th:replace="~{valido/fragments :: siteFooter}"></footer>
+</body>
+</html>

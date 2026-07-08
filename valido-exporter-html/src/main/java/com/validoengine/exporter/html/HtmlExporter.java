@@ -15,7 +15,7 @@ import com.validoengine.core.model.ToolId;
 import com.validoengine.core.model.ToolModel;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
-import org.thymeleaf.templateresolver.StringTemplateResolver;
+import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 import org.thymeleaf.templatemode.TemplateMode;
 
 import java.io.IOException;
@@ -33,40 +33,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 public final class HtmlExporter {
     private static final ExporterId HTML_EXPORTER_ID = HtmlExporterDescriptor.ID;
-    private static final String TEMPLATE = """
-            <!doctype html>
-            <html th:lang="${locale}">
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title th:text="${title}"></title>
-              <meta name="description" th:attr="content=${description}">
-              <link rel="canonical" th:attr="href=${canonical}">
-              <link th:each="alternate : ${hreflang}" rel="alternate" th:attr="hreflang=${alternate.locale},href=${alternate.href}">
-            </head>
-            <body>
-              <header>
-                <a th:href="${homePath}" th:text="${siteName}"></a>
-              </header>
-              <main>
-                <h1 th:text="${heading}"></h1>
-                <p th:if="${summary != ''}" th:text="${summary}"></p>
-                <nav th:if="${links.size() > 0}">
-                  <ul>
-                    <li th:each="link : ${links}"><a th:href="${link.path}" th:text="${link.title}"></a></li>
-                  </ul>
-                </nav>
-                <section th:each="section : ${sections}">
-                  <h2 th:text="${section.title}"></h2>
-                  <pre th:text="${section.body}"></pre>
-                </section>
-              </main>
-            </body>
-            </html>
-            """;
+    private static final String PAGE_TEMPLATE = "valido/page";
+    private static final Pattern ORDERED_LIST = Pattern.compile("\\d+\\.\\s+.+");
+    private static final String STYLESHEET = readResource("valido/static/styles.css");
 
     private final TemplateEngine templateEngine;
 
@@ -104,16 +77,22 @@ public final class HtmlExporter {
         variables.put("siteName", projectModel.site().name().resolve(route.locale(), projectModel.site().defaultLocale()));
         variables.put("homePath", "/" + route.locale().value() + "/");
         variables.put("locale", route.locale().value());
+        variables.put("pageType", page.pageType());
+        variables.put("pageLabel", page.pageLabel());
+        variables.put("currentPath", route.path());
         variables.put("title", page.title());
         variables.put("description", page.description());
         variables.put("canonical", route.canonicalUrl());
         variables.put("hreflang", hreflang(projectModel, route));
+        variables.put("stylesheet", STYLESHEET);
+        variables.put("navigation", navigation(projectModel, route.locale()));
+        variables.put("breadcrumbs", breadcrumbs(projectModel, route, page.heading()));
         variables.put("heading", page.heading());
         variables.put("summary", page.summary());
         variables.put("links", page.links());
         variables.put("sections", page.sections());
         context.setVariables(variables);
-        String html = templateEngine.process(TEMPLATE, context);
+        String html = templateEngine.process(PAGE_TEMPLATE, context);
         try {
             Files.createDirectories(route.outputFile().getParent());
             Files.writeString(route.outputFile(), html);
@@ -147,6 +126,8 @@ public final class HtmlExporter {
                 .toList();
         String siteName = projectModel.site().name().resolve(route.locale(), projectModel.site().defaultLocale());
         return new PageView(
+                "Home",
+                "home",
                 seoTitle(projectModel.site().seo().title(), route.locale(), projectModel.site().defaultLocale(), siteName),
                 seoDescription(projectModel.site().seo().description(), route.locale(), projectModel.site().defaultLocale(), ""),
                 siteName,
@@ -169,6 +150,8 @@ public final class HtmlExporter {
         String fallbackTitle = tool.name().resolve(route.locale(), projectModel.site().defaultLocale());
         String fallbackDescription = tool.summary().resolve(route.locale(), projectModel.site().defaultLocale());
         return new PageView(
+                "Tool",
+                "tool",
                 seoTitle(tool.seo().title(), route.locale(), projectModel.site().defaultLocale(), fallbackTitle),
                 seoDescription(tool.seo().description(), route.locale(), projectModel.site().defaultLocale(), fallbackDescription),
                 fallbackTitle,
@@ -189,6 +172,8 @@ public final class HtmlExporter {
         String fallbackTitle = category.name().resolve(route.locale(), projectModel.site().defaultLocale());
         String fallbackDescription = category.summary().resolve(route.locale(), projectModel.site().defaultLocale());
         return new PageView(
+                "Category",
+                "category",
                 seoTitle(category.seo().title(), route.locale(), projectModel.site().defaultLocale(), fallbackTitle),
                 seoDescription(category.seo().description(), route.locale(), projectModel.site().defaultLocale(), fallbackDescription),
                 fallbackTitle,
@@ -208,6 +193,8 @@ public final class HtmlExporter {
                 .toList();
         String title = country.name().resolve(route.locale(), projectModel.site().defaultLocale());
         return new PageView(
+                "Country",
+                "country",
                 title,
                 "Tools for " + title + ".",
                 title,
@@ -379,6 +366,55 @@ public final class HtmlExporter {
         };
     }
 
+    private static List<LinkView> navigation(ProjectModel projectModel, LocaleCode locale) {
+        List<LinkView> links = new ArrayList<>();
+        links.add(new LinkView("/" + locale.value() + "/", "Home"));
+        projectModel.routes().stream()
+                .filter(route -> route.locale().equals(locale))
+                .filter(route -> route.pageType() == RouteType.CATEGORY || route.pageType() == RouteType.COUNTRY)
+                .sorted(Comparator.comparing(route -> titleFor(projectModel, route, locale), String.CASE_INSENSITIVE_ORDER))
+                .map(route -> new LinkView(route.path(), titleFor(projectModel, route, locale)))
+                .forEach(links::add);
+        return List.copyOf(links);
+    }
+
+    private static List<LinkView> breadcrumbs(ProjectModel projectModel, RouteModel route, String title) {
+        List<LinkView> breadcrumbs = new ArrayList<>();
+        breadcrumbs.add(new LinkView("/" + route.locale().value() + "/", "Home"));
+        switch (route.pageType()) {
+            case HOME -> {
+                return List.of();
+            }
+            case TOOL -> {
+                findTool(projectModel, route).ifPresent(tool -> {
+                    tool.optionalCountry()
+                            .flatMap(country -> projectModel.routes().stream()
+                                    .filter(candidate -> candidate.locale().equals(route.locale()))
+                                    .filter(candidate -> candidate.pageType() == RouteType.COUNTRY)
+                                    .filter(candidate -> candidate.sourceAggregateId().equals(country.value()))
+                                    .findFirst())
+                            .ifPresent(countryRoute -> breadcrumbs.add(new LinkView(countryRoute.path(), titleFor(projectModel, countryRoute, route.locale()))));
+                    projectModel.routes().stream()
+                            .filter(candidate -> candidate.locale().equals(route.locale()))
+                            .filter(candidate -> candidate.pageType() == RouteType.CATEGORY)
+                            .filter(candidate -> candidate.sourceAggregateId().equals(tool.category().value()))
+                            .findFirst()
+                            .ifPresent(categoryRoute -> breadcrumbs.add(new LinkView(categoryRoute.path(), titleFor(projectModel, categoryRoute, route.locale()))));
+                });
+            }
+            case CATEGORY -> breadcrumbs.add(new LinkView("/" + route.locale().value() + "/", "Categories"));
+            case COUNTRY -> breadcrumbs.add(new LinkView("/" + route.locale().value() + "/", "Countries"));
+        }
+        breadcrumbs.add(new LinkView(route.path(), title));
+        return List.copyOf(breadcrumbs);
+    }
+
+    private static Optional<ToolModel> findTool(ProjectModel projectModel, RouteModel route) {
+        return projectModel.tools().stream()
+                .filter(tool -> tool.id().value().equals(route.sourceAggregateId()))
+                .findFirst();
+    }
+
     private static List<HreflangView> hreflang(ProjectModel projectModel, RouteModel route) {
         return projectModel.routes().stream()
                 .filter(candidate -> candidate.pageType() == route.pageType())
@@ -454,15 +490,39 @@ public final class HtmlExporter {
     }
 
     private static TemplateEngine templateEngine() {
-        StringTemplateResolver resolver = new StringTemplateResolver();
+        ClassLoaderTemplateResolver resolver = new ClassLoaderTemplateResolver();
+        resolver.setPrefix("templates/");
+        resolver.setSuffix(".html");
         resolver.setTemplateMode(TemplateMode.HTML);
+        resolver.setCharacterEncoding("UTF-8");
         resolver.setCacheable(true);
         TemplateEngine engine = new TemplateEngine();
         engine.setTemplateResolver(resolver);
         return engine;
     }
 
+    private static String readResource(String name) {
+        try (var stream = HtmlExporter.class.getClassLoader().getResourceAsStream(name)) {
+            if (stream == null) {
+                throw new IllegalStateException("Missing exporter resource: " + name);
+            }
+            return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Unable to read exporter resource: " + name, exception);
+        }
+    }
+
+    private static String markdownToHtml(String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            return "";
+        }
+        MarkdownRenderer renderer = new MarkdownRenderer(markdown);
+        return renderer.render();
+    }
+
     public record PageView(
+            String pageLabel,
+            String pageType,
             String title,
             String description,
             String heading,
@@ -476,8 +536,173 @@ public final class HtmlExporter {
     }
 
     public record SectionView(String title, String body) {
+        public String html() {
+            return markdownToHtml(body);
+        }
     }
 
     public record HreflangView(String locale, String href) {
+    }
+
+    private static final class MarkdownRenderer {
+        private final List<String> lines;
+        private final StringBuilder html = new StringBuilder();
+        private int index;
+
+        private MarkdownRenderer(String markdown) {
+            this.lines = markdown.replace("\r\n", "\n").replace('\r', '\n').lines().toList();
+        }
+
+        private String render() {
+            while (index < lines.size()) {
+                String line = lines.get(index);
+                if (line.isBlank()) {
+                    index++;
+                } else if (line.startsWith("```")) {
+                    codeBlock();
+                } else if (isTableStart()) {
+                    table();
+                } else if (line.startsWith("- ") || line.startsWith("* ")) {
+                    unorderedList();
+                } else if (ORDERED_LIST.matcher(line).matches()) {
+                    orderedList();
+                } else if (line.startsWith("### ")) {
+                    html.append("<h3>").append(inline(line.substring(4))).append("</h3>\n");
+                    index++;
+                } else if (line.startsWith("## ")) {
+                    html.append("<h3>").append(inline(line.substring(3))).append("</h3>\n");
+                    index++;
+                } else if (line.startsWith("# ")) {
+                    html.append("<h3>").append(inline(line.substring(2))).append("</h3>\n");
+                    index++;
+                } else {
+                    paragraph();
+                }
+            }
+            return html.toString();
+        }
+
+        private void codeBlock() {
+            index++;
+            StringBuilder code = new StringBuilder();
+            while (index < lines.size() && !lines.get(index).startsWith("```")) {
+                code.append(lines.get(index)).append('\n');
+                index++;
+            }
+            if (index < lines.size()) {
+                index++;
+            }
+            html.append("<pre><code>").append(escape(code.toString().stripTrailing())).append("</code></pre>\n");
+        }
+
+        private boolean isTableStart() {
+            return index + 1 < lines.size()
+                    && lines.get(index).contains("|")
+                    && lines.get(index + 1).matches("\\s*\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*");
+        }
+
+        private void table() {
+            List<String> headers = tableCells(lines.get(index));
+            index += 2;
+            html.append("<div class=\"table-wrap\"><table><thead><tr>");
+            headers.forEach(header -> html.append("<th>").append(inline(header)).append("</th>"));
+            html.append("</tr></thead><tbody>");
+            while (index < lines.size() && lines.get(index).contains("|") && !lines.get(index).isBlank()) {
+                html.append("<tr>");
+                tableCells(lines.get(index)).forEach(cell -> html.append("<td>").append(inline(cell)).append("</td>"));
+                html.append("</tr>");
+                index++;
+            }
+            html.append("</tbody></table></div>\n");
+        }
+
+        private static List<String> tableCells(String line) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("|")) {
+                trimmed = trimmed.substring(1);
+            }
+            if (trimmed.endsWith("|")) {
+                trimmed = trimmed.substring(0, trimmed.length() - 1);
+            }
+            return java.util.Arrays.stream(trimmed.split("\\|"))
+                    .map(String::trim)
+                    .toList();
+        }
+
+        private void unorderedList() {
+            html.append("<ul>\n");
+            while (index < lines.size() && (lines.get(index).startsWith("- ") || lines.get(index).startsWith("* "))) {
+                html.append("<li>").append(inline(lines.get(index).substring(2))).append("</li>\n");
+                index++;
+            }
+            html.append("</ul>\n");
+        }
+
+        private void orderedList() {
+            html.append("<ol>\n");
+            while (index < lines.size() && ORDERED_LIST.matcher(lines.get(index)).matches()) {
+                String line = lines.get(index);
+                int separator = line.indexOf('.');
+                html.append("<li>").append(inline(line.substring(separator + 1).trim())).append("</li>\n");
+                index++;
+            }
+            html.append("</ol>\n");
+        }
+
+        private void paragraph() {
+            StringBuilder text = new StringBuilder();
+            while (index < lines.size()
+                    && !lines.get(index).isBlank()
+                    && !lines.get(index).startsWith("```")
+                    && !lines.get(index).startsWith("# ")
+                    && !lines.get(index).startsWith("## ")
+                    && !lines.get(index).startsWith("### ")
+                    && !lines.get(index).startsWith("- ")
+                    && !lines.get(index).startsWith("* ")
+                    && !ORDERED_LIST.matcher(lines.get(index)).matches()
+                    && !isTableStart()) {
+                if (!text.isEmpty()) {
+                    text.append(' ');
+                }
+                text.append(lines.get(index).trim());
+                index++;
+            }
+            html.append("<p>").append(inline(text.toString())).append("</p>\n");
+        }
+
+        private static String inline(String value) {
+            String escaped = escape(value);
+            StringBuilder result = new StringBuilder();
+            boolean code = false;
+            StringBuilder segment = new StringBuilder();
+            for (int i = 0; i < escaped.length(); i++) {
+                char character = escaped.charAt(i);
+                if (character == '`') {
+                    result.append(code ? "<code>" : "");
+                    if (code) {
+                        result.append(segment).append("</code>");
+                    } else {
+                        result.append(segment);
+                    }
+                    segment.setLength(0);
+                    code = !code;
+                } else {
+                    segment.append(character);
+                }
+            }
+            if (code) {
+                result.append('`');
+            }
+            result.append(segment);
+            return result.toString();
+        }
+
+        private static String escape(String value) {
+            return value
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("\"", "&quot;");
+        }
     }
 }
