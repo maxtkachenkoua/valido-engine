@@ -178,7 +178,7 @@ public final class ContentDiscovery {
     private static Optional<MarkdownIdentity> inferMarkdownIdentity(Path root, Path path) {
         Path relative = root.relativize(path);
         int count = relative.getNameCount();
-        if (count >= 5 && "content".equals(relative.getName(0).toString()) && "tools".equals(relative.getName(1).toString())) {
+        if (count >= 4 && "content".equals(relative.getName(0).toString()) && "tools".equals(relative.getName(1).toString())) {
             return parseMarkdownFileName(relative.getName(2).toString(), relative.getFileName().toString());
         }
         if (count >= 3 && "examples".equals(relative.getName(0).toString())) {
