@@ -8,6 +8,7 @@ import com.validoengine.core.model.ExportPlan;
 import com.validoengine.core.model.LocaleCode;
 import com.validoengine.core.model.LocaleModel;
 import com.validoengine.core.model.ProjectModel;
+import com.validoengine.core.model.RouteModel;
 import com.validoengine.core.model.ToolId;
 import com.validoengine.core.model.ToolModel;
 
@@ -19,8 +20,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class ProjectModelAssembler {
-    public ProjectModel assemble(ContentProject contentProject) {
+    public ProjectModel assemble(ContentProject contentProject, List<RouteModel> routes) {
         Objects.requireNonNull(contentProject, "contentProject");
+        routes = routes == null ? List.of() : List.copyOf(routes);
         Map<ToolId, AlgorithmBindingModel> algorithmBindings = contentProject.tools().stream()
                 .collect(Collectors.toUnmodifiableMap(ToolModel::id, ToolModel::algorithmBinding));
         return new ProjectModel(
@@ -31,7 +33,7 @@ public final class ProjectModelAssembler {
                 locales(contentProject),
                 contentProject.content(),
                 algorithmBindings,
-                List.of(),
+                routes,
                 List.of(),
                 capabilities(contentProject),
                 ExportPlan.empty()
