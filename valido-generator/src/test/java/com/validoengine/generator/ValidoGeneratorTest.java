@@ -2,6 +2,7 @@ package com.validoengine.generator;
 
 import com.validoengine.generator.model.GenerationPhase;
 import com.validoengine.generator.model.GenerationRequest;
+import com.validoengine.core.model.ExporterId;
 import com.validoengine.core.model.RelatedReason;
 import com.validoengine.core.model.ToolId;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ class ValidoGeneratorTest {
         assertEquals(1, model.capabilities().size());
         assertEquals(5, model.routes().size());
         assertEquals(5, result.report().routeCount());
+        assertEquals(1, result.report().exporterCount());
         assertEquals(
                 java.util.Set.of(
                         "/en/",
@@ -58,8 +60,18 @@ class ValidoGeneratorTest {
                         && route.outputFile().toString().equals(peselOutput)
                         && route.canonicalUrl().equals("https://validohub.example/en/poland/pesel-validator/")));
         assertEquals(2, model.relatedLinks().size());
-        assertTrue(model.exportPlan().exporters().isEmpty());
-        assertTrue(model.exportPlan().generatedArtifacts().isEmpty());
+        assertEquals(List.of(new ExporterId("html")), model.exportPlan().exporters());
+        assertEquals(Path.of("generated", "validohub"), model.exportPlan().targetDirectories().get(new ExporterId("html")));
+        assertEquals(
+                model.routes().stream()
+                        .map(route -> route.outputFile().toString())
+                        .sorted()
+                        .toList(),
+                model.exportPlan().generatedArtifacts().stream()
+                        .map(Path::toString)
+                        .toList()
+        );
+        assertTrue(model.exportPlan().reportPaths().isEmpty());
     }
 
     @Test

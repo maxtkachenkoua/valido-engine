@@ -21,8 +21,13 @@ import java.util.stream.Collectors;
 
 public final class ProjectModelAssembler {
     public ProjectModel assemble(ContentProject contentProject, List<RouteModel> routes) {
+        return assemble(contentProject, routes, ExportPlan.empty());
+    }
+
+    public ProjectModel assemble(ContentProject contentProject, List<RouteModel> routes, ExportPlan exportPlan) {
         Objects.requireNonNull(contentProject, "contentProject");
         routes = routes == null ? List.of() : List.copyOf(routes);
+        exportPlan = exportPlan == null ? ExportPlan.empty() : exportPlan;
         Map<ToolId, AlgorithmBindingModel> algorithmBindings = contentProject.tools().stream()
                 .collect(Collectors.toUnmodifiableMap(ToolModel::id, ToolModel::algorithmBinding));
         return new ProjectModel(
@@ -36,7 +41,7 @@ public final class ProjectModelAssembler {
                 routes,
                 List.of(),
                 capabilities(contentProject),
-                ExportPlan.empty()
+                exportPlan
         );
     }
 

@@ -3,6 +3,7 @@ package com.validoengine.generator;
 import com.validoengine.content.load.ContentProjectLoader;
 import com.validoengine.content.model.ContentLoadResult;
 import com.validoengine.content.model.ContentProject;
+import com.validoengine.core.model.ExportPlan;
 import com.validoengine.core.model.ProjectModel;
 import com.validoengine.core.validation.ValidationReport;
 import com.validoengine.generator.model.GenerationPhase;
@@ -19,21 +20,30 @@ public final class ValidoGenerator {
     private final ProjectModelAssembler projectModelAssembler;
     private final RouteGenerator routeGenerator;
     private final RelatedLinkResolver relatedLinkResolver;
+    private final ExportPlanBuilder exportPlanBuilder;
 
     public ValidoGenerator() {
-        this(new ContentProjectLoader(), new ProjectModelAssembler(), new RouteGenerator(), new RelatedLinkResolver());
+        this(
+                new ContentProjectLoader(),
+                new ProjectModelAssembler(),
+                new RouteGenerator(),
+                new RelatedLinkResolver(),
+                new ExportPlanBuilder()
+        );
     }
 
     public ValidoGenerator(
             ContentProjectLoader contentProjectLoader,
             ProjectModelAssembler projectModelAssembler,
             RouteGenerator routeGenerator,
-            RelatedLinkResolver relatedLinkResolver
+            RelatedLinkResolver relatedLinkResolver,
+            ExportPlanBuilder exportPlanBuilder
     ) {
         this.contentProjectLoader = Objects.requireNonNull(contentProjectLoader, "contentProjectLoader");
         this.projectModelAssembler = Objects.requireNonNull(projectModelAssembler, "projectModelAssembler");
         this.routeGenerator = Objects.requireNonNull(routeGenerator, "routeGenerator");
         this.relatedLinkResolver = Objects.requireNonNull(relatedLinkResolver, "relatedLinkResolver");
+        this.exportPlanBuilder = Objects.requireNonNull(exportPlanBuilder, "exportPlanBuilder");
     }
 
     public GenerationResult generate(GenerationRequest request) {
@@ -57,7 +67,12 @@ public final class ValidoGenerator {
             );
         }
 
-        ProjectModel projectModel = relatedLinkResolver.resolve(projectModelAssembler.assemble(contentLoadResult.project(), routeGenerationResult.routes()));
+        ExportPlan exportPlan = exportPlanBuilder.buildHtmlPlan(contentLoadResult.project(), routeGenerationResult.routes());
+        ProjectModel projectModel = relatedLinkResolver.resolve(projectModelAssembler.assemble(
+                contentLoadResult.project(),
+                routeGenerationResult.routes(),
+                exportPlan
+        ));
         return new GenerationResult(
                 projectModel,
                 report(projectModel, contentLoadResult, generationReport, GenerationPhase.PROJECT_MODEL_ASSEMBLY, true),
