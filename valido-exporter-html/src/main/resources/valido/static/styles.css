@@ -650,6 +650,13 @@ select:focus {
   padding: 12px;
 }
 
+.invalid-sequence {
+  border-radius: 4px;
+  background: #fff0ed;
+  color: var(--danger);
+  padding: 0 3px;
+}
+
 .preview-image {
   max-width: min(100%, 520px);
   max-height: 340px;

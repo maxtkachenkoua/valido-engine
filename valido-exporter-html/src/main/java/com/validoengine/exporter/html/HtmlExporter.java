@@ -243,8 +243,11 @@ public final class HtmlExporter {
 
     private static boolean supportedBrowserAction(ToolModel tool, String action) {
         String algorithmId = tool.algorithmBinding().algorithmId().value();
-        return "validohub.base64".equals(algorithmId)
-                && ("encode".equals(action) || "decode".equals(action) || "validate".equals(action));
+        return switch (algorithmId) {
+            case "validohub.base64", "validohub.url-encoder", "validohub.url-decoder" ->
+                    "encode".equals(action) || "decode".equals(action) || "validate".equals(action);
+            default -> false;
+        };
     }
 
     private static InputView inputView(FormInputModel input, LocaleCode locale, LocaleCode fallback) {

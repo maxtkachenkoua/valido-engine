@@ -72,6 +72,14 @@ class HtmlExporterTest {
         assertTrue(toolHtml.contains("ValidoWorkbench"));
         assertTrue(toolHtml.contains("registerPlugin"));
         assertTrue(toolHtml.contains("Base64Plugin"));
+        assertTrue(toolHtml.contains("UrlPlugin"));
+        assertTrue(toolHtml.contains("validohub.url-encoder"));
+        assertTrue(toolHtml.contains("validohub.url-decoder"));
+        assertTrue(toolHtml.contains("Malformed URL encoding"));
+        assertTrue(toolHtml.contains("Invalid percent sequence"));
+        assertTrue(toolHtml.contains("Percent-encoded byte count"));
+        assertTrue(toolHtml.contains("url-hello"));
+        assertTrue(toolHtml.contains("url-malformed"));
         assertTrue(toolHtml.contains("TextEncoder"));
         assertTrue(toolHtml.contains("TextDecoder"));
         assertTrue(toolHtml.contains("Enter text to encode."));
