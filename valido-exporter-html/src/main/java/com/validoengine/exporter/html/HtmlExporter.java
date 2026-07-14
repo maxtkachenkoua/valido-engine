@@ -382,14 +382,19 @@ public final class HtmlExporter {
         Map.entry("validohub.uuid", "uuid.js")
     );
 
+    private static String conventionToolScript(String algorithmId) {
+        String prefix = "validohub.";
+        if (!algorithmId.startsWith(prefix) || algorithmId.length() <= prefix.length()) {
+            return null;
+        }
+        return algorithmId.substring(prefix.length()) + ".js";
+    }
+
     private static List<AssetView> scriptAssets(ProjectModel projectModel, PageView page) {
         String algorithmId = page.forms().isEmpty() ? null : page.forms().get(0).algorithmId();
         String neededTool = null;
         if (algorithmId != null) {
-            neededTool = ALGORITHM_TO_SCRIPT.get(algorithmId);
-            if (neededTool == null) {
-                throw new IllegalStateException("FATAL: No registered script asset mapping for algorithm ID: " + algorithmId);
-            }
+            neededTool = ALGORITHM_TO_SCRIPT.getOrDefault(algorithmId, conventionToolScript(algorithmId));
         }
 
         final String finalNeededTool = neededTool;
