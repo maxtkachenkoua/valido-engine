@@ -361,6 +361,7 @@ public final class HtmlExporter {
 
     private static final Map<String, String> ALGORITHM_TO_SCRIPT = Map.ofEntries(
         Map.entry("validohub.pesel", "pesel.js"),
+        Map.entry("validohub.brazil-pix", "pix.js"),
         Map.entry("validohub.base64-decoder", "base64.js"),
         Map.entry("validohub.base64", "base64.js"),
         Map.entry("validohub.json-formatter", "json.js"),
@@ -392,24 +393,28 @@ public final class HtmlExporter {
         }
 
         final String finalNeededTool = neededTool;
-        return siteAssetPaths(projectModel).stream()
+        List<SiteAsset> scriptAssets = siteAssetPaths(projectModel).stream()
                 .filter(asset -> asset.relativePath().startsWith(Path.of("js")))
                 .filter(asset -> asset.relativePath().getFileName().toString().endsWith(".js"))
+                .toList();
+        boolean hasFingerprintJsBundle = scriptAssets.stream()
+                .map(asset -> asset.relativePath().toString().replace('\\', '/'))
+                .anyMatch(path -> path.matches("js/bundle\\.[A-Za-z0-9_-]+\\.js"));
+        return scriptAssets.stream()
                 .filter(asset -> {
                     String relativeStr = asset.relativePath().toString().replace('\\', '/');
-                    // Always include the fingerprinted bundle.[hash].js
-                    if (relativeStr.startsWith("js/bundle.") || relativeStr.equals("js/bundle.js")) {
+                    if (relativeStr.startsWith("js/bundle.")) {
                         return true;
                     }
-                    // If no forms, exclude all workbench and tool scripts
+                    if (!hasFingerprintJsBundle && relativeStr.startsWith("js/") && !relativeStr.startsWith("js/workbench/") && !relativeStr.startsWith("js/tools/")) {
+                        return true;
+                    }
                     if (algorithmId == null) {
                         return false;
                     }
-                    // For workbench, include workbench scripts
                     if (relativeStr.startsWith("js/workbench/")) {
                         return true;
                     }
-                    // For the active tool script
                     if (finalNeededTool != null && relativeStr.equals("js/tools/" + finalNeededTool)) {
                         return true;
                     }
@@ -466,17 +471,27 @@ public final class HtmlExporter {
         }
         Path targetRoot = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID).resolve("assets").normalize();
         try (var paths = Files.walk(sourceRoot)) {
-            return paths
+            List<Path> files = paths
                     .filter(Files::isRegularFile)
+                    .toList();
+            boolean hasFingerprintCssBundle = files.stream()
+                    .map(sourceRoot::relativize)
+                    .map(Path::toString)
+                    .map(path -> path.replace('\\', '/'))
+                    .anyMatch(path -> path.matches("css/bundle\\.[A-Za-z0-9_-]+\\.css"));
+            boolean hasFingerprintJsBundle = files.stream()
+                    .map(sourceRoot::relativize)
+                    .map(Path::toString)
+                    .map(path -> path.replace('\\', '/'))
+                    .anyMatch(path -> path.matches("js/bundle\\.[A-Za-z0-9_-]+\\.js"));
+            return files.stream()
                     .filter(source -> {
                         Path relative = sourceRoot.relativize(source);
                         String relStr = relative.toString().replace('\\', '/');
-                        // Exclude individual CSS source files (keeping only fingerprinted bundle)
-                        if (relStr.startsWith("css/") && !relStr.startsWith("css/bundle.")) {
+                        if (hasFingerprintCssBundle && relStr.startsWith("css/") && !relStr.startsWith("css/bundle.")) {
                             return false;
                         }
-                        // Exclude uncompiled JS bundle.js
-                        if (relStr.equals("js/bundle.js")) {
+                        if (hasFingerprintJsBundle && relStr.equals("js/bundle.js")) {
                             return false;
                         }
                         return true;

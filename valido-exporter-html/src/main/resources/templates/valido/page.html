@@ -8,7 +8,7 @@
   <link rel="canonical" th:attr="href=${canonical}">
   <link th:each="alternate : ${hreflang}" rel="alternate" th:attr="hreflang=${alternate.locale},href=${alternate.href}">
   <link th:each="asset : ${stylesheets}" rel="stylesheet" th:attr="href=${asset.href}">
-  <script>
+  <script th:inline="none">
     window.MathJax = {
       tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] },
       options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
