@@ -12,6 +12,7 @@ import java.util.Comparator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class HtmlExporterTest {
     @TempDir
@@ -29,11 +30,11 @@ class HtmlExporterTest {
 
         HtmlExportResult result = new HtmlExporter().export(projectModel);
 
-        assertEquals(projectModel.routes().size() + 5, result.writtenFiles().size());
+        assertEquals(projectModel.routes().stream().filter(r -> r.pageType() != com.validoengine.core.model.RouteType.COUNTRY).count() + 5, result.writtenFiles().size());
         assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "index.html"))));
         assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "tools", "base64-encoder", "index.html"))));
         assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "categories", "encoding", "index.html"))));
-        assertTrue(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "poland", "index.html"))));
+        assertFalse(Files.isRegularFile(outputDirectory.resolve(Path.of("en", "poland", "index.html"))));
         assertTrue(Files.isRegularFile(outputDirectory.resolve("sitemap.xml")));
         assertTrue(Files.isRegularFile(outputDirectory.resolve("robots.txt")));
         assertTrue(Files.isRegularFile(outputDirectory.resolve("search-index.json")));
@@ -81,7 +82,7 @@ class HtmlExporterTest {
 
         String sitemap = Files.readString(outputDirectory.resolve("sitemap.xml"));
         assertTrue(sitemap.contains("<loc>https://validohub.example/en/tools/base64-encoder/</loc>"));
-        assertTrue(sitemap.contains("<loc>https://validohub.example/en/poland/</loc>"));
+        assertFalse(sitemap.contains("<loc>https://validohub.example/en/poland/</loc>"));
 
         String robots = Files.readString(outputDirectory.resolve("robots.txt"));
         assertTrue(robots.contains("User-agent: *"));

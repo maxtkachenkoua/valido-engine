@@ -64,6 +64,7 @@ public final class HtmlExporter {
         Map<CountryCode, CountryModel> countriesByCode = projectModel.countries().stream()
                 .collect(Collectors.toUnmodifiableMap(CountryModel::code, country -> country));
         List<Path> writtenFiles = projectModel.routes().stream()
+                .filter(route -> route.pageType() != RouteType.COUNTRY)
                 .sorted(Comparator.comparing(RouteModel::path))
                 .map(route -> writeRoute(projectModel, route, toolsById, categoriesById, countriesByCode))
                 .collect(Collectors.toCollection(ArrayList::new));
@@ -93,7 +94,7 @@ public final class HtmlExporter {
         variables.put("hreflang", hreflang(projectModel, route));
         variables.put("defaultStylesheet", DEFAULT_STYLESHEET);
         variables.put("stylesheets", stylesheetAssets(projectModel));
-        variables.put("scripts", scriptAssets(projectModel));
+        variables.put("scripts", scriptAssets(projectModel, page));
         variables.put("navigation", navigation(projectModel, route.locale()));
         variables.put("breadcrumbs", breadcrumbs(projectModel, route, page.heading()));
         variables.put("heading", page.heading());
@@ -358,10 +359,62 @@ public final class HtmlExporter {
                 .toList();
     }
 
-    private static List<AssetView> scriptAssets(ProjectModel projectModel) {
+    private static final Map<String, String> ALGORITHM_TO_SCRIPT = Map.ofEntries(
+        Map.entry("validohub.pesel", "pesel.js"),
+        Map.entry("validohub.base64-decoder", "base64.js"),
+        Map.entry("validohub.base64", "base64.js"),
+        Map.entry("validohub.json-formatter", "json.js"),
+        Map.entry("validohub.json-validator", "json.js"),
+        Map.entry("validohub.jwt-decoder", "jwt.js"),
+        Map.entry("validohub.url-decoder", "url.js"),
+        Map.entry("validohub.url-encoder", "url.js"),
+        Map.entry("validohub.case-converter", "case-converter.js"),
+        Map.entry("validohub.html-decoder", "html.js"),
+        Map.entry("validohub.html-encoder", "html.js"),
+        Map.entry("validohub.iban", "iban.js"),
+        Map.entry("validohub.md5", "md5.js"),
+        Map.entry("validohub.regex-tester", "regex.js"),
+        Map.entry("validohub.sha1", "sha.js"),
+        Map.entry("validohub.sha256", "sha.js"),
+        Map.entry("validohub.slug-generator", "slug.js"),
+        Map.entry("validohub.text-diff", "text-diff.js"),
+        Map.entry("validohub.uuid", "uuid.js")
+    );
+
+    private static List<AssetView> scriptAssets(ProjectModel projectModel, PageView page) {
+        String algorithmId = page.forms().isEmpty() ? null : page.forms().get(0).algorithmId();
+        String neededTool = null;
+        if (algorithmId != null) {
+            neededTool = ALGORITHM_TO_SCRIPT.get(algorithmId);
+            if (neededTool == null) {
+                throw new IllegalStateException("FATAL: No registered script asset mapping for algorithm ID: " + algorithmId);
+            }
+        }
+
+        final String finalNeededTool = neededTool;
         return siteAssetPaths(projectModel).stream()
                 .filter(asset -> asset.relativePath().startsWith(Path.of("js")))
                 .filter(asset -> asset.relativePath().getFileName().toString().endsWith(".js"))
+                .filter(asset -> {
+                    String relativeStr = asset.relativePath().toString().replace('\\', '/');
+                    // Always include the fingerprinted bundle.[hash].js
+                    if (relativeStr.startsWith("js/bundle.") || relativeStr.equals("js/bundle.js")) {
+                        return true;
+                    }
+                    // If no forms, exclude all workbench and tool scripts
+                    if (algorithmId == null) {
+                        return false;
+                    }
+                    // For workbench, include workbench scripts
+                    if (relativeStr.startsWith("js/workbench/")) {
+                        return true;
+                    }
+                    // For the active tool script
+                    if (finalNeededTool != null && relativeStr.equals("js/tools/" + finalNeededTool)) {
+                        return true;
+                    }
+                    return false;
+                })
                 .sorted(HtmlExporter::scriptOrder)
                 .map(asset -> new AssetView(asset.href()))
                 .toList();
@@ -415,6 +468,19 @@ public final class HtmlExporter {
         try (var paths = Files.walk(sourceRoot)) {
             return paths
                     .filter(Files::isRegularFile)
+                    .filter(source -> {
+                        Path relative = sourceRoot.relativize(source);
+                        String relStr = relative.toString().replace('\\', '/');
+                        // Exclude individual CSS source files (keeping only fingerprinted bundle)
+                        if (relStr.startsWith("css/") && !relStr.startsWith("css/bundle.")) {
+                            return false;
+                        }
+                        // Exclude uncompiled JS bundle.js
+                        if (relStr.equals("js/bundle.js")) {
+                            return false;
+                        }
+                        return true;
+                    })
                     .map(source -> {
                         Path relative = sourceRoot.relativize(source);
                         return new SiteAsset(source, targetRoot.resolve(relative).normalize(), relative);
@@ -448,6 +514,7 @@ public final class HtmlExporter {
 
     private static String sitemap(ProjectModel projectModel) {
         String urls = projectModel.routes().stream()
+                .filter(route -> route.pageType() != RouteType.COUNTRY)
                 .sorted(Comparator.comparing(RouteModel::canonicalUrl))
                 .map(route -> "  <url><loc>" + xml(route.canonicalUrl()) + "</loc></url>")
                 .collect(Collectors.joining("\n"));
