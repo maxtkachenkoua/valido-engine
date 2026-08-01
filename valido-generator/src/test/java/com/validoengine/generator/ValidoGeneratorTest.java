@@ -138,6 +138,34 @@ class ValidoGeneratorTest {
                 .count());
     }
 
+    @Test
+    void capsAutomaticRelatedLinksForToolPages() throws IOException {
+        writeRelatedProject(tempDir);
+        for (int index = 0; index < 20; index++) {
+            writeTool(
+                    tempDir,
+                    "bulk-category-tool-" + index,
+                    "Bulk Category Tool " + index,
+                    "otherhub",
+                    "source-category",
+                    null,
+                    "generate",
+                    "validohub.generate",
+                    ""
+            );
+        }
+
+        var result = new ValidoGenerator().generate(GenerationRequest.forProjectRoot(tempDir));
+
+        assertTrue(result.successful());
+        var source = result.optionalProjectModel().orElseThrow().tools().stream()
+                .filter(tool -> tool.id().equals(new ToolId("source-tool")))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(12, source.relatedLinks().size());
+        assertEquals(new ToolId("country-tool"), source.relatedLinks().get(0).toolId());
+    }
+
     private static void writeProject(Path root, String mode, String toolCapability, String algorithmCapability) throws IOException {
         write(root.resolve("site.yaml"), """
                 schemaVersion: 1

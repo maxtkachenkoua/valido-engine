@@ -23,6 +23,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public final class RelatedLinkResolver {
+    private static final int MAX_RELATED_LINKS_PER_TOOL = 12;
+
     public ProjectModel resolve(ProjectModel projectModel) {
         Objects.requireNonNull(projectModel, "projectModel");
         Map<ToolId, ToolModel> publicToolsById = publicToolsById(projectModel);
@@ -51,7 +53,8 @@ public final class RelatedLinkResolver {
         boolean includeDrafts = projectModel.site().mode() == SiteMode.DEMO && projectModel.site().includeDrafts();
         return projectModel.tools().stream()
                 .filter(tool -> tool.status() == ToolStatus.ACTIVE || (includeDrafts && tool.status() == ToolStatus.DRAFT))
-                .collect(Collectors.toUnmodifiableMap(ToolModel::id, tool -> tool));
+                .sorted(Comparator.comparing(tool -> tool.id().value()))
+                .collect(Collectors.toMap(ToolModel::id, tool -> tool, (left, right) -> left, LinkedHashMap::new));
     }
 
     private static Map<String, RouteModel> defaultLocaleToolRoutes(ProjectModel projectModel) {
@@ -80,6 +83,7 @@ public final class RelatedLinkResolver {
                         .comparingInt(Candidate::orderBucket)
                         .thenComparing(Candidate::title, String.CASE_INSENSITIVE_ORDER)
                         .thenComparing(candidate -> candidate.toolId().value()))
+                .limit(MAX_RELATED_LINKS_PER_TOOL)
                 .map(Candidate::toModel)
                 .toList();
         return copy(tool, relatedLinks);
@@ -109,13 +113,22 @@ public final class RelatedLinkResolver {
             addMatching(source, publicToolsById, defaultLocaleToolRoutes, defaultLocale, candidates, RelatedReason.SAME_COUNTRY, 2, target ->
                     source.optionalCountry().isPresent() && source.optionalCountry().equals(target.optionalCountry()));
         }
+        if (candidates.size() >= MAX_RELATED_LINKS_PER_TOOL) {
+            return;
+        }
         if (config.sameCategory()) {
             addMatching(source, publicToolsById, defaultLocaleToolRoutes, defaultLocale, candidates, RelatedReason.SAME_CATEGORY, 3, target ->
                     source.category().equals(target.category()));
         }
+        if (candidates.size() >= MAX_RELATED_LINKS_PER_TOOL) {
+            return;
+        }
         if (config.sameCapability()) {
             addMatching(source, publicToolsById, defaultLocaleToolRoutes, defaultLocale, candidates, RelatedReason.SAME_CAPABILITY, 4, target ->
                     intersects(source.capabilities(), target.capabilities()));
+        }
+        if (candidates.size() >= MAX_RELATED_LINKS_PER_TOOL) {
+            return;
         }
         if (config.sameModule()) {
             addMatching(source, publicToolsById, defaultLocaleToolRoutes, defaultLocale, candidates, RelatedReason.SAME_MODULE, 5, target ->
@@ -133,10 +146,14 @@ public final class RelatedLinkResolver {
             int orderBucket,
             Predicate<ToolModel> predicate
     ) {
-        publicToolsById.values().stream()
-                .filter(target -> !target.id().equals(source.id()))
-                .filter(predicate)
-                .forEach(target -> addCandidate(source, target.id(), publicToolsById, defaultLocaleToolRoutes, defaultLocale, candidates, reason, orderBucket));
+        for (ToolModel target : publicToolsById.values()) {
+            if (candidates.size() >= MAX_RELATED_LINKS_PER_TOOL) {
+                return;
+            }
+            if (!target.id().equals(source.id()) && predicate.test(target)) {
+                addCandidate(source, target.id(), publicToolsById, defaultLocaleToolRoutes, defaultLocale, candidates, reason, orderBucket);
+            }
+        }
     }
 
     private static void addCandidate(

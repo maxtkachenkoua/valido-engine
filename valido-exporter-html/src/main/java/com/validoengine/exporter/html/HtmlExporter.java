@@ -63,12 +63,13 @@ public final class HtmlExporter {
                 .collect(Collectors.toUnmodifiableMap(CategoryModel::id, category -> category));
         Map<CountryCode, CountryModel> countriesByCode = projectModel.countries().stream()
                 .collect(Collectors.toUnmodifiableMap(CountryModel::code, country -> country));
+        List<SiteAsset> siteAssets = siteAssetPaths(projectModel);
         List<Path> writtenFiles = projectModel.routes().stream()
                 .filter(route -> route.pageType() != RouteType.COUNTRY)
                 .sorted(Comparator.comparing(RouteModel::path))
-                .map(route -> writeRoute(projectModel, route, toolsById, categoriesById, countriesByCode))
+                .map(route -> writeRoute(projectModel, route, toolsById, categoriesById, countriesByCode, siteAssets))
                 .collect(Collectors.toCollection(ArrayList::new));
-        writtenFiles.addAll(writeStaticArtifacts(projectModel, toolsById));
+        writtenFiles.addAll(writeStaticArtifacts(projectModel, toolsById, siteAssets));
         return new HtmlExportResult(writtenFiles);
     }
 
@@ -77,7 +78,8 @@ public final class HtmlExporter {
             RouteModel route,
             Map<ToolId, ToolModel> toolsById,
             Map<CategoryId, CategoryModel> categoriesById,
-            Map<CountryCode, CountryModel> countriesByCode
+            Map<CountryCode, CountryModel> countriesByCode,
+            List<SiteAsset> siteAssets
     ) {
         PageView page = page(projectModel, route, toolsById, categoriesById, countriesByCode);
         Context context = new Context(Locale.forLanguageTag(route.locale().value()));
@@ -93,10 +95,10 @@ public final class HtmlExporter {
         variables.put("canonical", route.canonicalUrl());
         variables.put("hreflang", hreflang(projectModel, route));
         variables.put("defaultStylesheet", DEFAULT_STYLESHEET);
-        variables.put("stylesheets", stylesheetAssets(projectModel));
-        variables.put("scripts", scriptAssets(projectModel, page));
+        variables.put("stylesheets", stylesheetAssets(siteAssets));
+        variables.put("scripts", scriptAssets(siteAssets, page));
         variables.put("navigation", navigation(projectModel, route.locale()));
-        variables.put("breadcrumbs", breadcrumbs(projectModel, route, page.heading()));
+        variables.put("breadcrumbs", breadcrumbs(route, page.heading()));
         variables.put("heading", page.heading());
         variables.put("summary", page.summary());
         variables.put("links", page.links());
@@ -316,13 +318,13 @@ public final class HtmlExporter {
         }
     }
 
-    private static List<Path> writeStaticArtifacts(ProjectModel projectModel, Map<ToolId, ToolModel> toolsById) {
+    private static List<Path> writeStaticArtifacts(ProjectModel projectModel, Map<ToolId, ToolModel> toolsById, List<SiteAsset> siteAssets) {
         Path targetDirectory = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID);
         List<Path> written = new ArrayList<>();
         written.add(writeFile(targetDirectory.resolve("sitemap.xml"), sitemap(projectModel)));
         written.add(writeFile(targetDirectory.resolve("robots.txt"), robots(projectModel)));
         written.add(writeFile(targetDirectory.resolve("search-index.json"), searchIndex(projectModel, toolsById)));
-        written.addAll(copySiteAssets(projectModel));
+        written.addAll(copySiteAssets(siteAssets));
         return List.copyOf(written);
     }
 
@@ -337,9 +339,9 @@ public final class HtmlExporter {
         return paths.stream().distinct().sorted(Comparator.comparing(Path::toString)).toList();
     }
 
-    private static List<Path> copySiteAssets(ProjectModel projectModel) {
+    private static List<Path> copySiteAssets(List<SiteAsset> siteAssets) {
         List<Path> copied = new ArrayList<>();
-        for (SiteAsset asset : siteAssetPaths(projectModel)) {
+        for (SiteAsset asset : siteAssets) {
             try {
                 Files.createDirectories(asset.target().getParent());
                 Files.copy(asset.source(), asset.target(), StandardCopyOption.REPLACE_EXISTING);
@@ -351,8 +353,8 @@ public final class HtmlExporter {
         return copied;
     }
 
-    private static List<AssetView> stylesheetAssets(ProjectModel projectModel) {
-        return siteAssetPaths(projectModel).stream()
+    private static List<AssetView> stylesheetAssets(List<SiteAsset> siteAssets) {
+        return siteAssets.stream()
                 .filter(asset -> asset.relativePath().startsWith(Path.of("css")))
                 .filter(asset -> asset.relativePath().getFileName().toString().endsWith(".css"))
                 .map(asset -> new AssetView(asset.href()))
@@ -390,7 +392,7 @@ public final class HtmlExporter {
         return algorithmId.substring(prefix.length()) + ".js";
     }
 
-    private static List<AssetView> scriptAssets(ProjectModel projectModel, PageView page) {
+    private static List<AssetView> scriptAssets(List<SiteAsset> siteAssets, PageView page) {
         String algorithmId = page.forms().isEmpty() ? null : page.forms().get(0).algorithmId();
         String neededTool = null;
         if (algorithmId != null) {
@@ -398,7 +400,7 @@ public final class HtmlExporter {
         }
 
         final String finalNeededTool = neededTool;
-        List<SiteAsset> scriptAssets = siteAssetPaths(projectModel).stream()
+        List<SiteAsset> scriptAssets = siteAssets.stream()
                 .filter(asset -> asset.relativePath().startsWith(Path.of("js")))
                 .filter(asset -> asset.relativePath().getFileName().toString().endsWith(".js"))
                 .toList();
@@ -646,50 +648,20 @@ public final class HtmlExporter {
     private static List<LinkView> navigation(ProjectModel projectModel, LocaleCode locale) {
         List<LinkView> links = new ArrayList<>();
         links.add(new LinkView("/" + locale.value() + "/", "Home"));
-        projectModel.routes().stream()
-                .filter(route -> route.locale().equals(locale))
-                .filter(route -> route.pageType() == RouteType.CATEGORY || route.pageType() == RouteType.COUNTRY)
-                .sorted(Comparator.comparing(route -> titleFor(projectModel, route, locale), String.CASE_INSENSITIVE_ORDER))
-                .map(route -> new LinkView(route.path(), titleFor(projectModel, route, locale)))
-                .forEach(links::add);
+        links.add(new LinkView("/" + locale.value() + "/tools/", "Tools"));
+        links.add(new LinkView("/" + locale.value() + "/countries/", "Countries"));
+        links.add(new LinkView("/" + locale.value() + "/categories/national-identifiers/", "Identifiers"));
         return List.copyOf(links);
     }
 
-    private static List<LinkView> breadcrumbs(ProjectModel projectModel, RouteModel route, String title) {
-        List<LinkView> breadcrumbs = new ArrayList<>();
-        breadcrumbs.add(new LinkView("/" + route.locale().value() + "/", "Home"));
-        switch (route.pageType()) {
-            case HOME -> {
-                return List.of();
-            }
-            case TOOL -> {
-                findTool(projectModel, route).ifPresent(tool -> {
-                    tool.optionalCountry()
-                            .flatMap(country -> projectModel.routes().stream()
-                                    .filter(candidate -> candidate.locale().equals(route.locale()))
-                                    .filter(candidate -> candidate.pageType() == RouteType.COUNTRY)
-                                    .filter(candidate -> candidate.sourceAggregateId().equals(country.value()))
-                                    .findFirst())
-                            .ifPresent(countryRoute -> breadcrumbs.add(new LinkView(countryRoute.path(), titleFor(projectModel, countryRoute, route.locale()))));
-                    projectModel.routes().stream()
-                            .filter(candidate -> candidate.locale().equals(route.locale()))
-                            .filter(candidate -> candidate.pageType() == RouteType.CATEGORY)
-                            .filter(candidate -> candidate.sourceAggregateId().equals(tool.category().value()))
-                            .findFirst()
-                            .ifPresent(categoryRoute -> breadcrumbs.add(new LinkView(categoryRoute.path(), titleFor(projectModel, categoryRoute, route.locale()))));
-                });
-            }
-            case CATEGORY -> breadcrumbs.add(new LinkView("/" + route.locale().value() + "/", "Categories"));
-            case COUNTRY -> breadcrumbs.add(new LinkView("/" + route.locale().value() + "/", "Countries"));
+    private static List<LinkView> breadcrumbs(RouteModel route, String title) {
+        if (route.pageType() == RouteType.HOME) {
+            return List.of();
         }
-        breadcrumbs.add(new LinkView(route.path(), title));
-        return List.copyOf(breadcrumbs);
-    }
-
-    private static Optional<ToolModel> findTool(ProjectModel projectModel, RouteModel route) {
-        return projectModel.tools().stream()
-                .filter(tool -> tool.id().value().equals(route.sourceAggregateId()))
-                .findFirst();
+        return List.of(
+                new LinkView("/" + route.locale().value() + "/", "Home"),
+                new LinkView(route.path(), title)
+        );
     }
 
     private static List<HreflangView> hreflang(ProjectModel projectModel, RouteModel route) {
