@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -37,6 +38,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
@@ -57,6 +63,17 @@ public final class HtmlExporter {
     public HtmlExportResult export(ProjectModel projectModel) {
         Objects.requireNonNull(projectModel, "projectModel");
         validatePlan(projectModel);
+        ExportContext exportContext = exportContext(projectModel);
+        List<RouteModel> htmlRoutes = projectModel.routes().stream()
+                .filter(route -> route.pageType() != RouteType.COUNTRY)
+                .sorted(Comparator.comparing(RouteModel::path))
+                .collect(Collectors.toCollection(ArrayList::new));
+        List<Path> writtenFiles = writeRoutes(exportContext, htmlRoutes);
+        writtenFiles.addAll(writeStaticArtifacts(exportContext));
+        return new HtmlExportResult(writtenFiles);
+    }
+
+    private static ExportContext exportContext(ProjectModel projectModel) {
         Map<ToolId, ToolModel> toolsById = projectModel.tools().stream()
                 .collect(Collectors.toUnmodifiableMap(ToolModel::id, tool -> tool));
         Map<CategoryId, CategoryModel> categoriesById = projectModel.categories().stream()
@@ -64,24 +81,80 @@ public final class HtmlExporter {
         Map<CountryCode, CountryModel> countriesByCode = projectModel.countries().stream()
                 .collect(Collectors.toUnmodifiableMap(CountryModel::code, country -> country));
         List<SiteAsset> siteAssets = siteAssetPaths(projectModel);
-        List<Path> writtenFiles = projectModel.routes().stream()
-                .filter(route -> route.pageType() != RouteType.COUNTRY)
-                .sorted(Comparator.comparing(RouteModel::path))
-                .map(route -> writeRoute(projectModel, route, toolsById, categoriesById, countriesByCode, siteAssets))
-                .collect(Collectors.toCollection(ArrayList::new));
-        writtenFiles.addAll(writeStaticArtifacts(projectModel, toolsById, siteAssets));
-        return new HtmlExportResult(writtenFiles);
+        List<SiteAsset> scriptAssets = siteAssets.stream()
+                .filter(asset -> asset.relativePath().startsWith(Path.of("js")))
+                .filter(asset -> asset.relativePath().getFileName().toString().endsWith(".js"))
+                .toList();
+        boolean hasFingerprintJsBundle = scriptAssets.stream()
+                .map(asset -> asset.relativePath().toString().replace('\\', '/'))
+                .anyMatch(path -> path.matches("js/bundle\\.[A-Za-z0-9_-]+\\.js"));
+        return new ExportContext(
+                projectModel,
+                toolsById,
+                categoriesById,
+                countriesByCode,
+                siteAssets,
+                stylesheetAssets(siteAssets),
+                scriptAssets,
+                hasFingerprintJsBundle,
+                hreflangByRouteKey(projectModel),
+                toolRoutesByIdLocale(projectModel)
+        );
+    }
+
+    private List<Path> writeRoutes(ExportContext exportContext, List<RouteModel> routes) {
+        ExportRuntime runtime = ExportRuntime.fromEnvironment(routes.size());
+        if (runtime.progressEnabled()) {
+            System.out.printf(
+                    "[engine:html] exporting %d HTML route(s) with concurrency %d.%n",
+                    routes.size(),
+                    runtime.concurrency()
+            );
+        }
+        if (runtime.concurrency() <= 1 || routes.size() <= 1) {
+            List<Path> written = new ArrayList<>(routes.size());
+            for (RouteModel route : routes) {
+                written.add(writeRoute(exportContext, route));
+                runtime.routeWritten();
+            }
+            return written;
+        }
+
+        var executor = Executors.newFixedThreadPool(runtime.concurrency());
+        try {
+            List<Future<Path>> futures = new ArrayList<>(routes.size());
+            for (RouteModel route : routes) {
+                futures.add(executor.submit(() -> {
+                    Path path = writeRoute(exportContext, route);
+                    runtime.routeWritten();
+                    return path;
+                }));
+            }
+            List<Path> written = new ArrayList<>(routes.size());
+            for (Future<Path> future : futures) {
+                written.add(future.get());
+            }
+            return written;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while exporting HTML routes.", exception);
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("Failed to export HTML routes.", cause);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private Path writeRoute(
-            ProjectModel projectModel,
-            RouteModel route,
-            Map<ToolId, ToolModel> toolsById,
-            Map<CategoryId, CategoryModel> categoriesById,
-            Map<CountryCode, CountryModel> countriesByCode,
-            List<SiteAsset> siteAssets
+            ExportContext exportContext,
+            RouteModel route
     ) {
-        PageView page = page(projectModel, route, toolsById, categoriesById, countriesByCode);
+        ProjectModel projectModel = exportContext.projectModel();
+        PageView page = page(exportContext, route);
         Context context = new Context(Locale.forLanguageTag(route.locale().value()));
         Map<String, Object> variables = new LinkedHashMap<>();
         variables.put("siteName", projectModel.site().name().resolve(route.locale(), projectModel.site().defaultLocale()));
@@ -93,10 +166,10 @@ public final class HtmlExporter {
         variables.put("title", page.title());
         variables.put("description", page.description());
         variables.put("canonical", route.canonicalUrl());
-        variables.put("hreflang", hreflang(projectModel, route));
+        variables.put("hreflang", exportContext.hreflangByRouteKey().getOrDefault(RouteKey.from(route), List.of()));
         variables.put("defaultStylesheet", DEFAULT_STYLESHEET);
-        variables.put("stylesheets", stylesheetAssets(siteAssets));
-        variables.put("scripts", scriptAssets(siteAssets, page));
+        variables.put("stylesheets", exportContext.stylesheets());
+        variables.put("scripts", scriptAssets(exportContext, page));
         variables.put("navigation", navigation(projectModel, route.locale()));
         variables.put("breadcrumbs", breadcrumbs(route, page.heading()));
         variables.put("heading", page.heading());
@@ -116,26 +189,24 @@ public final class HtmlExporter {
     }
 
     private PageView page(
-            ProjectModel projectModel,
-            RouteModel route,
-            Map<ToolId, ToolModel> toolsById,
-            Map<CategoryId, CategoryModel> categoriesById,
-            Map<CountryCode, CountryModel> countriesByCode
+            ExportContext exportContext,
+            RouteModel route
     ) {
         return switch (route.pageType()) {
-            case HOME -> home(projectModel, route);
-            case TOOL -> tool(projectModel, route, toolsById);
-            case CATEGORY -> category(projectModel, route, categoriesById);
-            case COUNTRY -> country(projectModel, route, countriesByCode);
+            case HOME -> home(exportContext, route);
+            case TOOL -> tool(exportContext, route);
+            case CATEGORY -> category(exportContext, route);
+            case COUNTRY -> country(exportContext, route);
         };
     }
 
-    private PageView home(ProjectModel projectModel, RouteModel route) {
+    private PageView home(ExportContext exportContext, RouteModel route) {
+        ProjectModel projectModel = exportContext.projectModel();
         List<LinkView> links = projectModel.routes().stream()
                 .filter(publicListingRoute())
                 .filter(candidate -> candidate.locale().equals(route.locale()))
                 .sorted(Comparator.comparing(RouteModel::path))
-                .map(candidate -> new LinkView(candidate.path(), titleFor(projectModel, candidate, route.locale())))
+                .map(candidate -> new LinkView(candidate.path(), titleFor(exportContext, candidate, route.locale())))
                 .toList();
         String siteName = projectModel.site().name().resolve(route.locale(), projectModel.site().defaultLocale());
         return new PageView(
@@ -151,8 +222,9 @@ public final class HtmlExporter {
         );
     }
 
-    private PageView tool(ProjectModel projectModel, RouteModel route, Map<ToolId, ToolModel> toolsById) {
-        ToolModel tool = require(toolsById.get(new ToolId(route.sourceAggregateId())), route);
+    private PageView tool(ExportContext exportContext, RouteModel route) {
+        ProjectModel projectModel = exportContext.projectModel();
+        ToolModel tool = require(exportContext.toolsById().get(new ToolId(route.sourceAggregateId())), route);
         List<SectionView> sections = projectModel.content().blocksByTool().getOrDefault(tool.id(), List.of()).stream()
                 .filter(block -> block.locale().equals(route.locale()))
                 .sorted(Comparator.comparingInt(ContentBlockModel::order).thenComparing(block -> block.block().id()))
@@ -176,11 +248,12 @@ public final class HtmlExporter {
         );
     }
 
-    private PageView category(ProjectModel projectModel, RouteModel route, Map<CategoryId, CategoryModel> categoriesById) {
-        CategoryModel category = require(categoriesById.get(new CategoryId(route.sourceAggregateId())), route);
+    private PageView category(ExportContext exportContext, RouteModel route) {
+        ProjectModel projectModel = exportContext.projectModel();
+        CategoryModel category = require(exportContext.categoriesById().get(new CategoryId(route.sourceAggregateId())), route);
         List<LinkView> links = projectModel.tools().stream()
                 .filter(tool -> tool.category().equals(category.id()))
-                .flatMap(tool -> routeFor(projectModel, route.locale(), tool.id()).stream()
+                .flatMap(tool -> routeFor(exportContext, route.locale(), tool.id()).stream()
                         .map(toolRoute -> new LinkView(toolRoute.path(), tool.name().resolve(route.locale(), projectModel.site().defaultLocale()))))
                 .sorted(Comparator.comparing(LinkView::title, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -199,11 +272,12 @@ public final class HtmlExporter {
         );
     }
 
-    private PageView country(ProjectModel projectModel, RouteModel route, Map<CountryCode, CountryModel> countriesByCode) {
-        CountryModel country = require(countriesByCode.get(new CountryCode(route.sourceAggregateId())), route);
+    private PageView country(ExportContext exportContext, RouteModel route) {
+        ProjectModel projectModel = exportContext.projectModel();
+        CountryModel country = require(exportContext.countriesByCode().get(new CountryCode(route.sourceAggregateId())), route);
         List<LinkView> links = projectModel.tools().stream()
                 .filter(tool -> tool.optionalCountry().map(country.code()::equals).orElse(false))
-                .flatMap(tool -> routeFor(projectModel, route.locale(), tool.id()).stream()
+                .flatMap(tool -> routeFor(exportContext, route.locale(), tool.id()).stream()
                         .map(toolRoute -> new LinkView(toolRoute.path(), tool.name().resolve(route.locale(), projectModel.site().defaultLocale()))))
                 .sorted(Comparator.comparing(LinkView::title, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -318,13 +392,14 @@ public final class HtmlExporter {
         }
     }
 
-    private static List<Path> writeStaticArtifacts(ProjectModel projectModel, Map<ToolId, ToolModel> toolsById, List<SiteAsset> siteAssets) {
+    private static List<Path> writeStaticArtifacts(ExportContext exportContext) {
+        ProjectModel projectModel = exportContext.projectModel();
         Path targetDirectory = projectModel.exportPlan().targetDirectories().get(HTML_EXPORTER_ID);
         List<Path> written = new ArrayList<>();
         written.add(writeFile(targetDirectory.resolve("sitemap.xml"), sitemap(projectModel)));
         written.add(writeFile(targetDirectory.resolve("robots.txt"), robots(projectModel)));
-        written.add(writeFile(targetDirectory.resolve("search-index.json"), searchIndex(projectModel, toolsById)));
-        written.addAll(copySiteAssets(siteAssets));
+        written.add(writeFile(targetDirectory.resolve("search-index.json"), searchIndex(exportContext)));
+        written.addAll(copySiteAssets(exportContext.siteAssets()));
         return List.copyOf(written);
     }
 
@@ -392,7 +467,7 @@ public final class HtmlExporter {
         return algorithmId.substring(prefix.length()) + ".js";
     }
 
-    private static List<AssetView> scriptAssets(List<SiteAsset> siteAssets, PageView page) {
+    private static List<AssetView> scriptAssets(ExportContext exportContext, PageView page) {
         String algorithmId = page.forms().isEmpty() ? null : page.forms().get(0).algorithmId();
         String neededTool = null;
         if (algorithmId != null) {
@@ -400,20 +475,13 @@ public final class HtmlExporter {
         }
 
         final String finalNeededTool = neededTool;
-        List<SiteAsset> scriptAssets = siteAssets.stream()
-                .filter(asset -> asset.relativePath().startsWith(Path.of("js")))
-                .filter(asset -> asset.relativePath().getFileName().toString().endsWith(".js"))
-                .toList();
-        boolean hasFingerprintJsBundle = scriptAssets.stream()
-                .map(asset -> asset.relativePath().toString().replace('\\', '/'))
-                .anyMatch(path -> path.matches("js/bundle\\.[A-Za-z0-9_-]+\\.js"));
-        return scriptAssets.stream()
+        return exportContext.scriptAssets().stream()
                 .filter(asset -> {
                     String relativeStr = asset.relativePath().toString().replace('\\', '/');
                     if (relativeStr.startsWith("js/bundle.")) {
                         return true;
                     }
-                    if (!hasFingerprintJsBundle && relativeStr.startsWith("js/") && !relativeStr.startsWith("js/workbench/") && !relativeStr.startsWith("js/tools/")) {
+                    if (!exportContext.hasFingerprintJsBundle() && relativeStr.startsWith("js/") && !relativeStr.startsWith("js/workbench/") && !relativeStr.startsWith("js/tools/")) {
                         return true;
                     }
                     if (algorithmId == null) {
@@ -557,13 +625,14 @@ public final class HtmlExporter {
                 """.formatted(baseUrl);
     }
 
-    private static String searchIndex(ProjectModel projectModel, Map<ToolId, ToolModel> toolsById) {
+    private static String searchIndex(ExportContext exportContext) {
+        ProjectModel projectModel = exportContext.projectModel();
         LocaleCode locale = projectModel.site().defaultLocale();
         String tools = projectModel.routes().stream()
                 .filter(route -> route.pageType() == RouteType.TOOL)
                 .filter(route -> route.locale().equals(locale))
-                .sorted(Comparator.comparing(route -> titleFor(projectModel, route, locale), String.CASE_INSENSITIVE_ORDER))
-                .map(route -> searchEntry(projectModel, toolsById.get(new ToolId(route.sourceAggregateId())), route, locale))
+                .sorted(Comparator.comparing(route -> titleFor(exportContext, route, locale), String.CASE_INSENSITIVE_ORDER))
+                .map(route -> searchEntry(projectModel, exportContext.toolsById().get(new ToolId(route.sourceAggregateId())), route, locale))
                 .collect(Collectors.joining(",\n"));
         return """
                 {
@@ -616,30 +685,22 @@ public final class HtmlExporter {
         return route -> route.pageType() == RouteType.TOOL || route.pageType() == RouteType.CATEGORY || route.pageType() == RouteType.COUNTRY;
     }
 
-    private static Optional<RouteModel> routeFor(ProjectModel projectModel, LocaleCode locale, ToolId toolId) {
-        return projectModel.routes().stream()
-                .filter(route -> route.pageType() == RouteType.TOOL)
-                .filter(route -> route.locale().equals(locale))
-                .filter(route -> route.sourceAggregateId().equals(toolId.value()))
-                .findFirst();
+    private static Optional<RouteModel> routeFor(ExportContext exportContext, LocaleCode locale, ToolId toolId) {
+        return Optional.ofNullable(exportContext.toolRoutesByIdLocale().get(toolId))
+                .map(routesByLocale -> routesByLocale.get(locale));
     }
 
-    private static String titleFor(ProjectModel projectModel, RouteModel route, LocaleCode locale) {
+    private static String titleFor(ExportContext exportContext, RouteModel route, LocaleCode locale) {
+        ProjectModel projectModel = exportContext.projectModel();
         return switch (route.pageType()) {
             case HOME -> projectModel.site().name().resolve(locale, projectModel.site().defaultLocale());
-            case TOOL -> projectModel.tools().stream()
-                    .filter(tool -> tool.id().value().equals(route.sourceAggregateId()))
-                    .findFirst()
+            case TOOL -> Optional.ofNullable(exportContext.toolsById().get(new ToolId(route.sourceAggregateId())))
                     .map(tool -> tool.name().resolve(locale, projectModel.site().defaultLocale()))
                     .orElse(route.path());
-            case CATEGORY -> projectModel.categories().stream()
-                    .filter(category -> category.id().value().equals(route.sourceAggregateId()))
-                    .findFirst()
+            case CATEGORY -> Optional.ofNullable(exportContext.categoriesById().get(new CategoryId(route.sourceAggregateId())))
                     .map(category -> category.name().resolve(locale, projectModel.site().defaultLocale()))
                     .orElse(route.path());
-            case COUNTRY -> projectModel.countries().stream()
-                    .filter(country -> country.code().value().equals(route.sourceAggregateId()))
-                    .findFirst()
+            case COUNTRY -> Optional.ofNullable(exportContext.countriesByCode().get(new CountryCode(route.sourceAggregateId())))
                     .map(country -> country.name().resolve(locale, projectModel.site().defaultLocale()))
                     .orElse(route.path());
         };
@@ -664,13 +725,37 @@ public final class HtmlExporter {
         );
     }
 
-    private static List<HreflangView> hreflang(ProjectModel projectModel, RouteModel route) {
-        return projectModel.routes().stream()
-                .filter(candidate -> candidate.pageType() == route.pageType())
-                .filter(candidate -> candidate.sourceAggregateId().equals(route.sourceAggregateId()))
-                .sorted(Comparator.comparing(candidate -> candidate.locale().value()))
-                .map(candidate -> new HreflangView(candidate.locale().value(), candidate.canonicalUrl()))
-                .toList();
+    private static Map<RouteKey, List<HreflangView>> hreflangByRouteKey(ProjectModel projectModel) {
+        Map<RouteKey, List<RouteModel>> groupedRoutes = projectModel.routes().stream()
+                .collect(Collectors.groupingBy(RouteKey::from));
+        Map<RouteKey, List<HreflangView>> groupedHreflang = new HashMap<>();
+        for (Map.Entry<RouteKey, List<RouteModel>> entry : groupedRoutes.entrySet()) {
+            groupedHreflang.put(
+                    entry.getKey(),
+                    entry.getValue().stream()
+                            .sorted(Comparator.comparing(candidate -> candidate.locale().value()))
+                            .map(candidate -> new HreflangView(candidate.locale().value(), candidate.canonicalUrl()))
+                            .toList()
+            );
+        }
+        return Map.copyOf(groupedHreflang);
+    }
+
+    private static Map<ToolId, Map<LocaleCode, RouteModel>> toolRoutesByIdLocale(ProjectModel projectModel) {
+        Map<ToolId, Map<LocaleCode, RouteModel>> routesByTool = new HashMap<>();
+        for (RouteModel route : projectModel.routes()) {
+            if (route.pageType() != RouteType.TOOL) {
+                continue;
+            }
+            routesByTool
+                    .computeIfAbsent(new ToolId(route.sourceAggregateId()), key -> new HashMap<>())
+                    .put(route.locale(), route);
+        }
+        Map<ToolId, Map<LocaleCode, RouteModel>> immutableRoutesByTool = new HashMap<>();
+        for (Map.Entry<ToolId, Map<LocaleCode, RouteModel>> entry : routesByTool.entrySet()) {
+            immutableRoutesByTool.put(entry.getKey(), Map.copyOf(entry.getValue()));
+        }
+        return Map.copyOf(immutableRoutesByTool);
     }
 
     private static String seoTitle(LocalizedText seoTitle, LocaleCode locale, LocaleCode fallback, String defaultValue) {
@@ -800,6 +885,87 @@ public final class HtmlExporter {
     private record SiteAsset(Path source, Path target, Path relativePath) {
         private String href() {
             return "/assets/" + relativePath.toString().replace('\\', '/');
+        }
+    }
+
+    private record RouteKey(RouteType pageType, String sourceAggregateId) {
+        private static RouteKey from(RouteModel route) {
+            return new RouteKey(route.pageType(), route.sourceAggregateId());
+        }
+    }
+
+    private record ExportContext(
+            ProjectModel projectModel,
+            Map<ToolId, ToolModel> toolsById,
+            Map<CategoryId, CategoryModel> categoriesById,
+            Map<CountryCode, CountryModel> countriesByCode,
+            List<SiteAsset> siteAssets,
+            List<AssetView> stylesheets,
+            List<SiteAsset> scriptAssets,
+            boolean hasFingerprintJsBundle,
+            Map<RouteKey, List<HreflangView>> hreflangByRouteKey,
+            Map<ToolId, Map<LocaleCode, RouteModel>> toolRoutesByIdLocale
+    ) {
+    }
+
+    private static final class ExportRuntime {
+        private static final int DEFAULT_PROGRESS_ITEMS = 5_000;
+
+        private final int total;
+        private final int concurrency;
+        private final int progressEvery;
+        private final AtomicInteger written = new AtomicInteger();
+        private final long startedAtNanos = System.nanoTime();
+
+        private ExportRuntime(int total, int concurrency, int progressEvery) {
+            this.total = total;
+            this.concurrency = concurrency;
+            this.progressEvery = progressEvery;
+        }
+
+        private static ExportRuntime fromEnvironment(int total) {
+            int defaultConcurrency = total < DEFAULT_PROGRESS_ITEMS
+                    ? 1
+                    : Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors()));
+            int concurrency = positiveInt(System.getenv("VALIDO_ENGINE_EXPORT_CONCURRENCY"), defaultConcurrency);
+            int progressEvery = positiveInt(System.getenv("VALIDO_ENGINE_EXPORT_PROGRESS_ITEMS"), DEFAULT_PROGRESS_ITEMS);
+            return new ExportRuntime(total, Math.max(1, concurrency), progressEvery);
+        }
+
+        private int concurrency() {
+            return concurrency;
+        }
+
+        private boolean progressEnabled() {
+            return progressEvery > 0 && total >= progressEvery;
+        }
+
+        private void routeWritten() {
+            int count = written.incrementAndGet();
+            if (!progressEnabled()) {
+                return;
+            }
+            if (count == total || count % progressEvery == 0) {
+                long elapsedSeconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedAtNanos);
+                System.out.printf(
+                        "[engine:html] exported %d/%d HTML route(s), elapsed %ds.%n",
+                        count,
+                        total,
+                        elapsedSeconds
+                );
+            }
+        }
+
+        private static int positiveInt(String raw, int fallback) {
+            if (raw == null || raw.isBlank()) {
+                return fallback;
+            }
+            try {
+                int value = Integer.parseInt(raw.trim());
+                return value > 0 ? value : fallback;
+            } catch (NumberFormatException exception) {
+                return fallback;
+            }
         }
     }
 

@@ -2,6 +2,22 @@
 
 This is AI-oriented architecture history, not release notes.
 
+## 2026-08-02 - HTML Exporter Throughput And Progress
+
+Changed:
+
+- Added exporter-side route indexes for hreflang and tool route lookup so static HTML export does not repeatedly scan the full route list while rendering category/tool pages.
+- Added parallel HTML route writing for large projects. Configure with `VALIDO_ENGINE_EXPORT_CONCURRENCY`; default is up to 8 workers for route sets above 5,000 pages.
+- Added exporter progress output for large projects. Configure with `VALIDO_ENGINE_EXPORT_PROGRESS_ITEMS`; default is every 5,000 written HTML routes.
+
+Reason:
+
+Large static products such as ValidoHub need the generic Engine publisher to stay bounded and observable.
+
+Impact:
+
+Direct ValidoHub `publish --site /Users/maxtkachenko/work/validohub/site.yaml` writes 75,075 Engine-owned HTML routes in about 10 seconds on the local machine, and the full ValidoHub release build dropped from about 7m29s to about 3m51s.
+
 ## Phase 1: Core Skeleton
 
 Added:
